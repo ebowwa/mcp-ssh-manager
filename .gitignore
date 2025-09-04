@@ -58,3 +58,4 @@ id_ed25519*
 # Backup files
 *.backup
 *.bak
+.server-aliases.json

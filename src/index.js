@@ -59,15 +59,32 @@ function loadServerConfig() {
   const servers = {};
   
   // Parse environment variables to extract servers
+  const knownFields = ['HOST', 'USER', 'PASSWORD', 'PORT', 'KEYPATH', 'DEFAULT_DIR', 'DESCRIPTION', 'SUDO_PASSWORD', 'ALIAS'];
+  
   for (const [key, value] of Object.entries(process.env)) {
-    const match = key.match(/^SSH_SERVER_(\w+)_(\w+)$/);
-    if (match) {
-      const [, serverName, field] = match;
-      const serverNameLower = serverName.toLowerCase();
-      if (!servers[serverNameLower]) {
-        servers[serverNameLower] = {};
+    if (key.startsWith('SSH_SERVER_')) {
+      // Remove SSH_SERVER_ prefix
+      const remaining = key.substring(11);
+      
+      // Find the last known field in the key
+      let serverName = null;
+      let field = null;
+      
+      for (const knownField of knownFields) {
+        const idx = remaining.lastIndexOf('_' + knownField);
+        if (idx !== -1) {
+          serverName = remaining.substring(0, idx).toLowerCase();
+          field = knownField.toLowerCase();
+          break;
+        }
       }
-      servers[serverNameLower][field.toLowerCase()] = value;
+      
+      if (serverName && field) {
+        if (!servers[serverName]) {
+          servers[serverName] = {};
+        }
+        servers[serverName][field] = value;
+      }
     }
   }
   

@@ -48,11 +48,27 @@ class SSHServerManager:
             if line and not line.startswith('#') and '=' in line:
                 key, value = line.split('=', 1)
                 if key.startswith('SSH_SERVER_'):
-                    parts = key.split('_')
-                    if len(parts) >= 4:
-                        server_name = parts[2].lower()
-                        field = '_'.join(parts[3:]).lower()
-                        
+                    # Remove SSH_SERVER_ prefix
+                    remaining = key[11:]  # len('SSH_SERVER_') = 11
+                    
+                    # Find the last underscore to separate server name from field
+                    # Server names can contain underscores, so we need to be careful
+                    # Fields are: HOST, USER, PASSWORD, PORT, KEYPATH, DEFAULT_DIR, DESCRIPTION, SUDO_PASSWORD, ALIAS
+                    known_fields = ['HOST', 'USER', 'PASSWORD', 'PORT', 'KEYPATH', 'DEFAULT_DIR', 'DESCRIPTION', 'SUDO_PASSWORD', 'ALIAS']
+                    
+                    server_name = None
+                    field = None
+                    
+                    # Try to find a valid field at the end
+                    parts = remaining.split('_')
+                    for i in range(len(parts)-1, 0, -1):
+                        possible_field = '_'.join(parts[i:]).upper()
+                        if possible_field in known_fields:
+                            server_name = '_'.join(parts[:i]).lower()
+                            field = possible_field.lower()
+                            break
+                    
+                    if server_name and field:
                         if server_name not in servers:
                             servers[server_name] = {}
                         servers[server_name][field] = value.strip('"\'')
