@@ -16,411 +16,463 @@ try:
     import paramiko
     from colorama import init, Fore, Style
     from tabulate import tabulate
+
     init()
 except ImportError:
     print("Installing required packages...")
-    subprocess.run([sys.executable, '-m', 'pip', 'install', 'paramiko', 'python-dotenv', 'colorama', 'tabulate'])
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "paramiko",
+            "python-dotenv",
+            "colorama",
+            "tabulate",
+        ]
+    )
     import paramiko
     from colorama import init, Fore, Style
     from tabulate import tabulate
+
     init()
+
 
 class SSHServerManager:
     def __init__(self):
         self.script_dir = Path(__file__).parent.parent
-        self.env_file = self.script_dir / '.env'
-        self.aliases_file = self.script_dir / '.server-aliases.json'
+        self.env_file = self.script_dir / ".env"
+        self.aliases_file = self.script_dir / ".server-aliases.json"
         self.servers = self.load_servers()
         self.aliases = self.load_aliases()
-        
+
     def load_servers(self) -> Dict:
         """Load servers from .env file"""
         servers = {}
-        
+
         if not self.env_file.exists():
             return servers
-            
-        with open(self.env_file, 'r') as f:
+
+        with open(self.env_file, "r") as f:
             lines = f.readlines()
-            
+
         for line in lines:
             line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                key, value = line.split('=', 1)
-                if key.startswith('SSH_SERVER_'):
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                if key.startswith("SSH_SERVER_"):
                     # Remove SSH_SERVER_ prefix
                     remaining = key[11:]  # len('SSH_SERVER_') = 11
-                    
+
                     # Find the last underscore to separate server name from field
                     # Server names can contain underscores, so we need to be careful
                     # Fields are: HOST, USER, PASSWORD, PORT, KEYPATH, DEFAULT_DIR, DESCRIPTION, SUDO_PASSWORD, ALIAS
-                    known_fields = ['HOST', 'USER', 'PASSWORD', 'PORT', 'KEYPATH', 'DEFAULT_DIR', 'DESCRIPTION', 'SUDO_PASSWORD', 'ALIAS']
-                    
+                    known_fields = [
+                        "HOST",
+                        "USER",
+                        "PASSWORD",
+                        "PORT",
+                        "KEYPATH",
+                        "DEFAULT_DIR",
+                        "DESCRIPTION",
+                        "SUDO_PASSWORD",
+                        "ALIAS",
+                    ]
+
                     server_name = None
                     field = None
-                    
+
                     # Try to find a valid field at the end
-                    parts = remaining.split('_')
-                    for i in range(len(parts)-1, 0, -1):
-                        possible_field = '_'.join(parts[i:]).upper()
+                    parts = remaining.split("_")
+                    for i in range(len(parts) - 1, 0, -1):
+                        possible_field = "_".join(parts[i:]).upper()
                         if possible_field in known_fields:
-                            server_name = '_'.join(parts[:i]).lower()
+                            server_name = "_".join(parts[:i]).lower()
                             field = possible_field.lower()
                             break
-                    
+
                     if server_name and field:
                         if server_name not in servers:
                             servers[server_name] = {}
-                        servers[server_name][field] = value.strip('"\'')
-                        
+                        servers[server_name][field] = value.strip("\"'")
+
         return servers
-    
+
     def load_aliases(self) -> Dict:
         """Load server aliases from .server-aliases.json"""
         if not self.aliases_file.exists():
             return {}
-        
+
         try:
-            with open(self.aliases_file, 'r') as f:
+            with open(self.aliases_file, "r") as f:
                 return json.load(f)
         except:
             return {}
-    
+
     def save_aliases(self):
         """Save aliases to .server-aliases.json"""
-        with open(self.aliases_file, 'w') as f:
+        with open(self.aliases_file, "w") as f:
             json.dump(self.aliases, f, indent=2)
-    
+
     def create_alias(self, alias: str, server_name: str):
         """Create or update an alias"""
         self.aliases[alias] = server_name
         self.save_aliases()
-    
+
     def save_servers(self):
         """Save servers to .env file"""
         lines = []
-        
+
         # Add header
         lines.append("# ============================================\n")
         lines.append("# MCP SSH Manager - Server Configuration\n")
         lines.append("# ============================================\n")
         lines.append("# Generated by server-manager.py\n")
         lines.append("# NEVER commit this file to version control!\n\n")
-        
+
         # Add each server
         for server_name, config in self.servers.items():
             lines.append(f"# Server: {server_name}\n")
             for field, value in config.items():
                 key = f"SSH_SERVER_{server_name.upper()}_{field.upper()}"
                 # Escape values containing spaces or special characters
-                if ' ' in value or '"' in value or '=' in value:
+                if " " in value or '"' in value or "=" in value:
                     value = f'"{value}"'
                 lines.append(f"{key}={value}\n")
             lines.append("\n")
-        
-        with open(self.env_file, 'w') as f:
+
+        with open(self.env_file, "w") as f:
             f.writelines(lines)
-            
+
         print(f"{Fore.GREEN}✅ Configuration saved to {self.env_file}{Style.RESET_ALL}")
-    
+
     def test_connection(self, server_name: str) -> bool:
         """Test connection to a server"""
         server_name = server_name.lower()
-        
+
         if server_name not in self.servers:
             print(f"{Fore.RED}❌ Server '{server_name}' not found{Style.RESET_ALL}")
             return False
-            
+
         config = self.servers[server_name]
-        
+
         print(f"\n{Fore.CYAN}Testing connection to {server_name}...{Style.RESET_ALL}")
         print(f"  Host: {config.get('host')}")
         print(f"  User: {config.get('user')}")
         print(f"  Port: {config.get('port', '22')}")
-        
+
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        
+
         try:
-            if 'password' in config:
+            if "password" in config:
                 client.connect(
-                    hostname=config['host'],
-                    username=config['user'],
-                    password=config['password'],
-                    port=int(config.get('port', 22)),
-                    timeout=10
+                    hostname=config["host"],
+                    username=config["user"],
+                    password=config["password"],
+                    port=int(config.get("port", 22)),
+                    timeout=10,
                 )
-            elif 'keypath' in config:
-                key_path = os.path.expanduser(config['keypath'])
+            elif "keypath" in config:
+                key_path = os.path.expanduser(config["keypath"])
                 client.connect(
-                    hostname=config['host'],
-                    username=config['user'],
+                    hostname=config["host"],
+                    username=config["user"],
                     key_filename=key_path,
-                    port=int(config.get('port', 22)),
-                    timeout=10
+                    port=int(config.get("port", 22)),
+                    timeout=10,
                 )
             else:
                 print(f"{Fore.RED}❌ No authentication method configured{Style.RESET_ALL}")
                 return False
-            
+
             # Test with a simple command
             stdin, stdout, stderr = client.exec_command('echo "Connection successful" && hostname')
             output = stdout.read().decode().strip()
-            
+
             print(f"{Fore.GREEN}✅ Connection successful!{Style.RESET_ALL}")
             print(f"  Response: {output}")
-            
+
             client.close()
             return True
-            
+
         except Exception as e:
             print(f"{Fore.RED}❌ Connection failed: {e}{Style.RESET_ALL}")
             return False
-    
+
     def validate_server_name(self, name: str) -> bool:
         """Validate server name"""
         if not name:
             return False
         # Accept letters, numbers, underscores and hyphens
-        return bool(re.match(r'^[a-zA-Z0-9_-]+$', name))
-    
+        return bool(re.match(r"^[a-zA-Z0-9_-]+$", name))
+
     def add_server(self):
         """Add a new server"""
         print(f"\n{Fore.CYAN}╔══════════════════════════════════════════╗{Style.RESET_ALL}")
         print(f"{Fore.CYAN}║        🚀 ADD NEW SSH SERVER             ║{Style.RESET_ALL}")
         print(f"{Fore.CYAN}╚══════════════════════════════════════════╝{Style.RESET_ALL}\n")
-        
+
         # Server name
         print(f"{Fore.YELLOW}📝 Step 1/6 - Server Name{Style.RESET_ALL}")
         print("   Choose a short, simple name (e.g., production, staging, dev)")
         while True:
             server_name = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Name: ").strip().lower()
             if not self.validate_server_name(server_name):
-                print(f"{Fore.RED}   ✗ Use only letters, numbers, hyphens and underscores{Style.RESET_ALL}")
+                print(
+                    f"{Fore.RED}   ✗ Use only letters, numbers, hyphens and underscores{Style.RESET_ALL}"
+                )
                 continue
             break
-            
+
         if server_name in self.servers:
             print(f"{Fore.YELLOW}   ⚠️  Server '{server_name}' already exists!{Style.RESET_ALL}")
             overwrite = input(f"   Overwrite? (y/n): ")
-            if overwrite.lower() != 'y':
+            if overwrite.lower() != "y":
                 return
-        
+
         # Basic configuration
         config = {}
         print(f"\n{Fore.YELLOW}🌐 Step 2/6 - Server Address{Style.RESET_ALL}")
-        config['host'] = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Host/IP (e.g., example.com): ").strip()
-        if not config['host']:
+        config["host"] = input(
+            f"   {Fore.GREEN}➜{Style.RESET_ALL} Host/IP (e.g., example.com): "
+        ).strip()
+        if not config["host"]:
             print(f"{Fore.RED}   ✗ Address cannot be empty{Style.RESET_ALL}")
             return
-            
+
         print(f"\n{Fore.YELLOW}👤 Step 3/6 - Connection Information{Style.RESET_ALL}")
-        config['user'] = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Username: ").strip()
-        if not config['user']:
+        config["user"] = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Username: ").strip()
+        if not config["user"]:
             print(f"{Fore.RED}   ✗ Username cannot be empty{Style.RESET_ALL}")
             return
-            
+
         port_input = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Port SSH [22]: ").strip()
-        config['port'] = port_input if port_input else "22"
-        
+        config["port"] = port_input if port_input else "22"
+
         # Authentication method
         print(f"\n{Fore.YELLOW}🔐 Step 4/6 - Authentication Method{Style.RESET_ALL}")
         print("   1) Password (simpler)")
         print("   2) SSH Key (more secure)")
         auth_choice = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Your choice [1]: ").strip() or "1"
-        
+
         if auth_choice == "1":
             print(f"\n   {Fore.CYAN}Enter password (will be hidden):{Style.RESET_ALL}")
             password = getpass(f"   {Fore.GREEN}➜{Style.RESET_ALL} Password: ")
             if not password:
                 print(f"{Fore.RED}   ✗ Password cannot be empty{Style.RESET_ALL}")
                 return
-            config['password'] = password
+            config["password"] = password
             print(f"   {Fore.GREEN}✓ Password saved{Style.RESET_ALL}")
         else:
-            key_path = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Private key path [~/.ssh/id_rsa]: ").strip() or "~/.ssh/id_rsa"
+            key_path = (
+                input(
+                    f"   {Fore.GREEN}➜{Style.RESET_ALL} Private key path [~/.ssh/id_rsa]: "
+                ).strip()
+                or "~/.ssh/id_rsa"
+            )
             expanded_path = os.path.expanduser(key_path)
             if not os.path.exists(expanded_path):
                 print(f"{Fore.YELLOW}   ⚠️  Key not found: {expanded_path}{Style.RESET_ALL}")
                 cont = input(f"   Continue anyway? (y/n): ")
-                if cont.lower() != 'y':
+                if cont.lower() != "y":
                     return
-            config['keypath'] = key_path
+            config["keypath"] = key_path
             print(f"   {Fore.GREEN}✓ SSH key configured{Style.RESET_ALL}")
-        
+
         # Default directory
         print(f"\n{Fore.YELLOW}📁 Step 5/8 - Default Working Directory (optional){Style.RESET_ALL}")
         print("   Leave empty to use home directory")
-        default_dir = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Default directory (e.g., /var/www): ").strip()
+        default_dir = input(
+            f"   {Fore.GREEN}➜{Style.RESET_ALL} Default directory (e.g., /var/www): "
+        ).strip()
         if default_dir:
-            config['default_dir'] = default_dir
+            config["default_dir"] = default_dir
             print(f"   {Fore.GREEN}✓ Default directory set to: {default_dir}{Style.RESET_ALL}")
-        
+
         # Sudo password (optional)
         print(f"\n{Fore.YELLOW}🔐 Step 6/8 - Sudo Password (optional){Style.RESET_ALL}")
         print("   Configure sudo password for automated deployments")
         print(f"   {Fore.YELLOW}⚠️  Warning: This will be stored in .env file{Style.RESET_ALL}")
-        configure_sudo = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Configure sudo password? (y/n): ").strip()
-        if configure_sudo.lower() == 'y':
+        configure_sudo = input(
+            f"   {Fore.GREEN}➜{Style.RESET_ALL} Configure sudo password? (y/n): "
+        ).strip()
+        if configure_sudo.lower() == "y":
             sudo_pass = getpass(f"   {Fore.GREEN}➜{Style.RESET_ALL} Sudo password: ")
-            config['sudo_password'] = sudo_pass
+            config["sudo_password"] = sudo_pass
             print(f"   {Fore.GREEN}✓ Sudo password configured{Style.RESET_ALL}")
-        
+
         # Server alias (optional)
         print(f"\n{Fore.YELLOW}🏷️ Step 7/8 - Server Alias (optional){Style.RESET_ALL}")
         print("   Create a short alias for this server (e.g., 'prod' for 'production')")
         alias = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Alias (leave empty to skip): ").strip()
         if alias:
             # Store alias in server config for reference
-            config['alias'] = alias
+            config["alias"] = alias
             # Create aliases file if needed
             self.create_alias(alias, server_name)
             print(f"   {Fore.GREEN}✓ Alias '{alias}' -> '{server_name}' created{Style.RESET_ALL}")
-        
+
         # Optional description
         print(f"\n{Fore.YELLOW}📋 Step 8/8 - Description (optional){Style.RESET_ALL}")
         description = input(f"   {Fore.GREEN}➜{Style.RESET_ALL} Description: ").strip()
         if description:
-            config['description'] = description
-        
+            config["description"] = description
+
         # Save
         self.servers[server_name] = config
         self.save_servers()
-        
+
         print(f"\n{Fore.GREEN}{'='*50}{Style.RESET_ALL}")
         print(f"{Fore.GREEN}✅ Server '{server_name}' added successfully!{Style.RESET_ALL}")
         print(f"{Fore.GREEN}{'='*50}{Style.RESET_ALL}")
-        
+
         # Test connection
         test = input(f"\n{Fore.CYAN}🔧 Test connection now? (y/n): {Style.RESET_ALL}")
-        if test.lower() == 'y':
+        if test.lower() == "y":
             self.test_connection(server_name)
-    
+
     def list_servers(self):
         """List all configured servers"""
         if not self.servers:
             print(f"{Fore.YELLOW}No servers configured yet.{Style.RESET_ALL}")
             print("Use option 2 to add a server.")
             return
-            
+
         print(f"\n{Fore.CYAN}=== Configured SSH Servers ==={Style.RESET_ALL}\n")
-        
+
         table_data = []
         for name, config in self.servers.items():
-            auth_type = '🔑 Key' if 'keypath' in config else '🔐 Password'
-            description = config.get('description', '')
+            auth_type = "🔑 Key" if "keypath" in config else "🔐 Password"
+            description = config.get("description", "")
             if len(description) > 30:
-                description = description[:27] + '...'
-            
-            default_dir = config.get('default_dir', '')
+                description = description[:27] + "..."
+
+            default_dir = config.get("default_dir", "")
             if len(default_dir) > 20:
-                default_dir = '...' + default_dir[-17:]
-            
-            table_data.append([
-                name,
-                config.get('host', ''),
-                config.get('user', ''),
-                config.get('port', '22'),
-                auth_type,
-                default_dir,
-                description
-            ])
-        
-        headers = ['Name', 'Host', 'User', 'Port', 'Auth', 'Default Dir', 'Description']
-        print(tabulate(table_data, headers=headers, tablefmt='grid'))
-    
+                default_dir = "..." + default_dir[-17:]
+
+            table_data.append(
+                [
+                    name,
+                    config.get("host", ""),
+                    config.get("user", ""),
+                    config.get("port", "22"),
+                    auth_type,
+                    default_dir,
+                    description,
+                ]
+            )
+
+        headers = ["Name", "Host", "User", "Port", "Auth", "Default Dir", "Description"]
+        print(tabulate(table_data, headers=headers, tablefmt="grid"))
+
     def remove_server(self):
         """Remove a server"""
         if not self.servers:
             print(f"{Fore.YELLOW}No servers to remove.{Style.RESET_ALL}")
             return
-            
+
         self.list_servers()
         server_name = input("\nEnter server name to remove: ").strip().lower()
-        
+
         if server_name in self.servers:
             confirm = input(f"{Fore.YELLOW}Remove server '{server_name}'? (y/n): {Style.RESET_ALL}")
-            if confirm.lower() == 'y':
+            if confirm.lower() == "y":
                 del self.servers[server_name]
                 self.save_servers()
                 print(f"{Fore.GREEN}✅ Server '{server_name}' removed{Style.RESET_ALL}")
         else:
             print(f"{Fore.RED}❌ Server '{server_name}' not found{Style.RESET_ALL}")
-    
+
     def update_claude_config(self):
         """Update Claude Code configuration"""
-        config_path = Path.home() / '.config' / 'claude-code' / 'claude_code_config.json'
-        
+        config_path = Path.home() / ".config" / "claude-code" / "claude_code_config.json"
+
         if not config_path.exists():
             print(f"{Fore.RED}❌ Claude Code config not found at {config_path}{Style.RESET_ALL}")
             print("\nTo manually configure Claude Code, add this to your config:")
             print(f"{Fore.CYAN}")
-            print(json.dumps({
-                "mcpServers": {
-                    "ssh-manager": {
-                        "command": "node",
-                        "args": [str(self.script_dir / 'src' / 'index.js')]
-                    }
-                }
-            }, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "ssh-manager": {
+                                "command": "node",
+                                "args": [str(self.script_dir / "src" / "index.js")],
+                            }
+                        }
+                    },
+                    indent=2,
+                )
+            )
             print(f"{Style.RESET_ALL}")
             return
-            
+
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
         except json.JSONDecodeError:
             print(f"{Fore.RED}❌ Invalid JSON in Claude Code config{Style.RESET_ALL}")
             return
-        
+
         # Add our MCP server
-        if 'mcpServers' not in config:
-            config['mcpServers'] = {}
-            
-        config['mcpServers']['ssh-manager'] = {
+        if "mcpServers" not in config:
+            config["mcpServers"] = {}
+
+        config["mcpServers"]["ssh-manager"] = {
             "command": "node",
-            "args": [str(self.script_dir / 'src' / 'index.js')]
+            "args": [str(self.script_dir / "src" / "index.js")],
         }
-        
-        with open(config_path, 'w') as f:
+
+        with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
-            
+
         print(f"{Fore.GREEN}✅ Claude Code configuration updated{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}⚠️  Please restart Claude Code to apply changes{Style.RESET_ALL}")
-    
+
     def install_dependencies(self):
         """Install required dependencies"""
         print(f"\n{Fore.CYAN}=== Installing Dependencies ==={Style.RESET_ALL}\n")
-        
+
         # Install npm dependencies
         print("Installing npm packages...")
-        result = subprocess.run(['npm', 'install'], cwd=self.script_dir)
+        result = subprocess.run(["npm", "install"], cwd=self.script_dir)
         if result.returncode != 0:
             print(f"{Fore.RED}❌ Failed to install npm packages{Style.RESET_ALL}")
             return
-        
+
         # Install Python packages
         print("\nInstalling Python packages...")
-        subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 
-                       str(self.script_dir / 'tools' / 'requirements.txt')])
-        
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-r",
+                str(self.script_dir / "tools" / "requirements.txt"),
+            ]
+        )
+
         print(f"\n{Fore.GREEN}✅ Dependencies installed{Style.RESET_ALL}")
-    
+
     def run_interactive(self):
         """Interactive menu"""
         while True:
             print(f"\n{Fore.CYAN}╔══════════════════════════════════════════╗{Style.RESET_ALL}")
             print(f"{Fore.CYAN}║      🚀 SSH MANAGER FOR CLAUDE CODE      ║{Style.RESET_ALL}")
             print(f"{Fore.CYAN}╚══════════════════════════════════════════╝{Style.RESET_ALL}")
-            
+
             print(f"\n{Fore.YELLOW}📋 CURRENT SERVERS:{Style.RESET_ALL}")
             if self.servers:
                 for name in self.servers.keys():
-                    auth_icon = "🔑" if 'keypath' in self.servers[name] else "🔐"
+                    auth_icon = "🔑" if "keypath" in self.servers[name] else "🔐"
                     print(f"   {auth_icon} {name} - {self.servers[name].get('host', '')}")
             else:
                 print(f"   {Fore.YELLOW}No servers configured{Style.RESET_ALL}")
-            
+
             print(f"\n{Fore.GREEN}AVAILABLE OPTIONS:{Style.RESET_ALL}")
             print("  1. 📋 List servers (details)")
             print("  2. ➕ Add server")
@@ -429,61 +481,65 @@ class SSHServerManager:
             print("  5. 🔄 Configure Claude Code")
             print("  6. 📦 Install dependencies")
             print("  0. 🚪 Exit")
-            
+
             choice = input(f"\n{Fore.YELLOW}➜ Your choice: {Style.RESET_ALL}").strip()
-            
-            if choice == '1':
+
+            if choice == "1":
                 self.list_servers()
-            elif choice == '2':
+            elif choice == "2":
                 self.add_server()
-            elif choice == '3':
+            elif choice == "3":
                 if not self.servers:
                     print(f"{Fore.YELLOW}⚠️  No servers configured.{Style.RESET_ALL}")
                 else:
                     print(f"\n{Fore.CYAN}Available servers:{Style.RESET_ALL}")
                     for name in self.servers.keys():
                         print(f"  - {name}")
-                    server = input(f"\n{Fore.GREEN}➜{Style.RESET_ALL} Server name to test: ").strip()
+                    server = input(
+                        f"\n{Fore.GREEN}➜{Style.RESET_ALL} Server name to test: "
+                    ).strip()
                     if server:
                         self.test_connection(server)
-            elif choice == '4':
+            elif choice == "4":
                 self.remove_server()
-            elif choice == '5':
+            elif choice == "5":
                 self.update_claude_config()
-            elif choice == '6':
+            elif choice == "6":
                 self.install_dependencies()
-            elif choice == '0':
+            elif choice == "0":
                 print(f"\n{Fore.GREEN}👋 Goodbye!{Style.RESET_ALL}")
                 break
             else:
                 print(f"{Fore.RED}✗ Invalid choice{Style.RESET_ALL}")
 
+
 def main():
     manager = SSHServerManager()
-    
+
     if len(sys.argv) > 1:
         command = sys.argv[1]
-        if command == 'list':
+        if command == "list":
             manager.list_servers()
-        elif command == 'add':
+        elif command == "add":
             manager.add_server()
-        elif command == 'test' and len(sys.argv) > 2:
+        elif command == "test" and len(sys.argv) > 2:
             manager.test_connection(sys.argv[2])
-        elif command == 'remove' and len(sys.argv) > 2:
+        elif command == "remove" and len(sys.argv) > 2:
             server_name = sys.argv[2].lower()
             if server_name in manager.servers:
                 del manager.servers[server_name]
                 manager.save_servers()
                 print(f"Server '{server_name}' removed")
-        elif command == 'update-claude':
+        elif command == "update-claude":
             manager.update_claude_config()
-        elif command == 'install':
+        elif command == "install":
             manager.install_dependencies()
         else:
             print(f"Unknown command: {command}")
             print("Usage: python server-manager.py [list|add|test|remove|update-claude|install]")
     else:
         manager.run_interactive()
+
 
 if __name__ == "__main__":
     main()

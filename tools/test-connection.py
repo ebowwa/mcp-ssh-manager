@@ -13,22 +13,25 @@ try:
 except ImportError:
     # If direct import fails, try importing as module
     import server_manager
+
     SSHServerManager = server_manager.SSHServerManager
+
 
 def main():
     manager = SSHServerManager()
-    
+
     if len(sys.argv) < 2:
         print("Usage: python test-connection.py <server_name>")
         print("\nAvailable servers:")
         for server in manager.servers.keys():
             print(f"  - {server}")
         sys.exit(1)
-    
+
     server_name = sys.argv[1]
     success = manager.test_connection(server_name)
-    
+
     sys.exit(0 if success else 1)
+
 
 if __name__ == "__main__":
     main()
