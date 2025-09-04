@@ -41,7 +41,7 @@ jobs:
     
     - name: Check Python syntax
       run: |
-        python -m py_compile tools/server-manager.py
+        python -m py_compile tools/server_manager.py
         python -m py_compile tools/test-connection.py
     
     - name: Create test .env file

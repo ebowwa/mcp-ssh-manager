@@ -8,7 +8,7 @@ import sys
 import json
 import re
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 import subprocess
 from getpass import getpass
 
@@ -107,7 +107,7 @@ class SSHServerManager:
         try:
             with open(self.aliases_file, "r") as f:
                 return json.load(f)
-        except:
+        except Exception:
             return {}
 
     def save_aliases(self):
@@ -228,7 +228,7 @@ class SSHServerManager:
 
         if server_name in self.servers:
             print(f"{Fore.YELLOW}   ⚠️  Server '{server_name}' already exists!{Style.RESET_ALL}")
-            overwrite = input(f"   Overwrite? (y/n): ")
+            overwrite = input("   Overwrite? (y/n): ")
             if overwrite.lower() != "y":
                 return
 
@@ -275,7 +275,7 @@ class SSHServerManager:
             expanded_path = os.path.expanduser(key_path)
             if not os.path.exists(expanded_path):
                 print(f"{Fore.YELLOW}   ⚠️  Key not found: {expanded_path}{Style.RESET_ALL}")
-                cont = input(f"   Continue anyway? (y/n): ")
+                cont = input("   Continue anyway? (y/n): ")
                 if cont.lower() != "y":
                     return
             config["keypath"] = key_path
