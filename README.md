@@ -21,7 +21,7 @@ A powerful Model Context Protocol (MCP) server that enables Claude Code to manag
 
 ## 📋 Prerequisites
 
-- Node.js (v16 or higher)
+- Node.js (v18 or higher)
 - Python 3.8+
 - Claude Code CLI installed
 - npm (comes with Node.js)
