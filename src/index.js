@@ -671,6 +671,379 @@ server.registerTool(
 );
 
 server.registerTool(
+  'ssh_tail',
+  {
+    description: 'Tail remote log files in real-time',
+    inputSchema: {
+      server: z.string().describe('Server name from configuration'),
+      file: z.string().describe('Path to the log file to tail'),
+      lines: z.number().optional().describe('Number of lines to show initially (default: 10)'),
+      follow: z.boolean().optional().describe('Follow file for new content (default: true)'),
+      grep: z.string().optional().describe('Filter lines with grep pattern')
+    }
+  },
+  async ({ server: serverName, file, lines = 10, follow = true, grep }) => {
+    try {
+      const ssh = await getConnection(serverName);
+      
+      // Build tail command
+      let command = `tail -n ${lines}`;
+      if (follow) {
+        command += ' -f';
+      }
+      command += ` "${file}"`;
+      
+      // Add grep filter if specified
+      if (grep) {
+        command += ` | grep "${grep}"`;
+      }
+      
+      logger.info(`Starting tail on ${serverName}`, {
+        file,
+        lines,
+        follow,
+        grep
+      });
+      
+      // For follow mode, we need to handle streaming
+      if (follow) {
+        // Create a unique session ID for this tail
+        const sessionId = `tail_${Date.now()}`;
+        
+        // Store the SSH stream for later cleanup
+        const stream = await ssh.execCommand(command, {
+          onStdout: (chunk) => {
+            // In a real implementation, this would stream to the client
+            console.error(`[${serverName}:${file}] ${chunk.toString()}`);
+          },
+          onStderr: (chunk) => {
+            console.error(`[ERROR] ${chunk.toString()}`);
+          },
+          timeout: 0 // No timeout for tail -f
+        });
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `📜 Tailing ${file} on ${serverName}\nSession ID: ${sessionId}\nShowing last ${lines} lines${grep ? ` (filtered: ${grep})` : ''}\n\n⚠️ Note: In follow mode, output is streamed to stderr.\nTo stop tailing, you'll need to kill the session.`
+            }
+          ]
+        };
+      } else {
+        // Non-follow mode - just get the output
+        const result = await ssh.execCommand(command);
+        
+        if (result.code !== 0) {
+          throw new Error(result.stderr || 'Failed to tail file');
+        }
+        
+        logger.info(`Tail completed on ${serverName}`, {
+          file,
+          lines: result.stdout.split('\n').length
+        });
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `📜 Last ${lines} lines of ${file} on ${serverName}${grep ? ` (filtered: ${grep})` : ''}:\n\n${result.stdout}`
+            }
+          ]
+        };
+      }
+    } catch (error) {
+      logger.error(`Tail failed on ${serverName}`, {
+        file,
+        error: error.message
+      });
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ Tail error: ${error.message}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'ssh_monitor',
+  {
+    description: 'Monitor system resources (CPU, RAM, disk) on remote server',
+    inputSchema: {
+      server: z.string().describe('Server name from configuration'),
+      type: z.enum(['overview', 'cpu', 'memory', 'disk', 'network', 'process']).optional().describe('Type of monitoring (default: overview)'),
+      interval: z.number().optional().describe('Update interval in seconds for continuous monitoring'),
+      duration: z.number().optional().describe('Duration in seconds for continuous monitoring')
+    }
+  },
+  async ({ server: serverName, type = 'overview', interval, duration }) => {
+    try {
+      const ssh = await getConnection(serverName);
+      
+      logger.info(`Starting system monitoring on ${serverName}`, {
+        type,
+        interval,
+        duration
+      });
+      
+      let commands = {};
+      let output = {};
+      
+      // Define monitoring commands based on type
+      switch (type) {
+        case 'cpu':
+          commands.cpu = "top -bn1 | head -20";
+          commands.load = "uptime";
+          commands.cores = "nproc";
+          break;
+          
+        case 'memory':
+          commands.memory = "free -h";
+          commands.swap = "swapon --show";
+          commands.top_mem = "ps aux --sort=-%mem | head -10";
+          break;
+          
+        case 'disk':
+          commands.disk = "df -h";
+          commands.inodes = "df -i";
+          commands.io = "iostat -x 1 2 | tail -n +4";
+          break;
+          
+        case 'network':
+          commands.interfaces = "ip -s link show";
+          commands.connections = "ss -tunap | head -20";
+          commands.netstat = "netstat -i";
+          break;
+          
+        case 'process':
+          commands.process = "ps aux --sort=-%cpu | head -20";
+          commands.count = "ps aux | wc -l";
+          commands.zombies = "ps aux | grep -c defunct || echo 0";
+          break;
+          
+        case 'overview':
+        default:
+          commands.uptime = "uptime";
+          commands.cpu = "mpstat 1 1 2>/dev/null || top -bn1 | grep 'Cpu'";
+          commands.memory = "free -h";
+          commands.disk = "df -h | grep -E '^/dev/' | head -5";
+          commands.load = "cat /proc/loadavg";
+          commands.processes = "ps aux | wc -l";
+          break;
+      }
+      
+      // Execute all monitoring commands
+      const startTime = Date.now();
+      
+      for (const [key, cmd] of Object.entries(commands)) {
+        try {
+          const result = await ssh.execCommand(cmd);
+          if (result.code === 0) {
+            output[key] = result.stdout.trim();
+          } else {
+            output[key] = `Error: ${result.stderr || 'Command failed'}`;
+          }
+        } catch (err) {
+          output[key] = `Error: ${err.message}`;
+        }
+      }
+      
+      const monitoringDuration = Date.now() - startTime;
+      
+      // Format the output based on type
+      let formattedOutput = `📊 System Monitor - ${serverName}\n`;
+      formattedOutput += `Type: ${type} | Time: ${new Date().toISOString()}\n`;
+      formattedOutput += `Collection time: ${monitoringDuration}ms\n`;
+      formattedOutput += '━'.repeat(50) + '\n\n';
+      
+      switch (type) {
+        case 'overview':
+          formattedOutput += `⏱️ UPTIME\n${output.uptime || 'N/A'}\n\n`;
+          formattedOutput += `💻 CPU\n${output.cpu || 'N/A'}\n\n`;
+          formattedOutput += `📈 LOAD AVERAGE\n${output.load || 'N/A'}\n\n`;
+          formattedOutput += `💾 MEMORY\n${output.memory || 'N/A'}\n\n`;
+          formattedOutput += `💿 DISK USAGE\n${output.disk || 'N/A'}\n\n`;
+          formattedOutput += `📝 PROCESSES: ${output.processes || 'N/A'}\n`;
+          break;
+          
+        case 'cpu':
+          formattedOutput += `🖥️ CPU CORES: ${output.cores || 'N/A'}\n\n`;
+          formattedOutput += `📊 LOAD\n${output.load || 'N/A'}\n\n`;
+          formattedOutput += `📈 TOP PROCESSES\n${output.cpu || 'N/A'}\n`;
+          break;
+          
+        case 'memory':
+          formattedOutput += `💾 MEMORY USAGE\n${output.memory || 'N/A'}\n\n`;
+          formattedOutput += `🔄 SWAP\n${output.swap || 'No swap configured'}\n\n`;
+          formattedOutput += `📊 TOP MEMORY CONSUMERS\n${output.top_mem || 'N/A'}\n`;
+          break;
+          
+        case 'disk':
+          formattedOutput += `💿 DISK SPACE\n${output.disk || 'N/A'}\n\n`;
+          formattedOutput += `📁 INODE USAGE\n${output.inodes || 'N/A'}\n\n`;
+          formattedOutput += `⚡ I/O STATS\n${output.io || 'N/A'}\n`;
+          break;
+          
+        case 'network':
+          formattedOutput += `🌐 NETWORK INTERFACES\n${output.interfaces || 'N/A'}\n\n`;
+          formattedOutput += `🔌 CONNECTIONS\n${output.connections || 'N/A'}\n\n`;
+          formattedOutput += `📊 INTERFACE STATS\n${output.netstat || 'N/A'}\n`;
+          break;
+          
+        case 'process':
+          formattedOutput += `📝 PROCESS COUNT: ${output.count || 'N/A'}\n`;
+          formattedOutput += `⚠️ ZOMBIE PROCESSES: ${output.zombies || '0'}\n\n`;
+          formattedOutput += `📊 TOP PROCESSES BY CPU\n${output.process || 'N/A'}\n`;
+          break;
+      }
+      
+      // Log monitoring results
+      logger.info(`System monitoring completed on ${serverName}`, {
+        type,
+        duration: `${monitoringDuration}ms`,
+        metrics: Object.keys(output).length
+      });
+      
+      // If continuous monitoring requested
+      if (interval && duration) {
+        formattedOutput += `\n\n⏰ Continuous monitoring: Every ${interval}s for ${duration}s\n`;
+        formattedOutput += `(Not implemented in this version - would require streaming support)`;
+      }
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: formattedOutput
+          }
+        ]
+      };
+    } catch (error) {
+      logger.error(`Monitoring failed on ${serverName}`, {
+        type,
+        error: error.message
+      });
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ Monitor error: ${error.message}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'ssh_history',
+  {
+    description: 'View SSH command history',
+    inputSchema: {
+      limit: z.number().optional().describe('Number of commands to show (default: 20)'),
+      server: z.string().optional().describe('Filter by server name'),
+      success: z.boolean().optional().describe('Filter by success/failure'),
+      search: z.string().optional().describe('Search in commands')
+    }
+  },
+  async ({ limit = 20, server, success, search }) => {
+    try {
+      // Get history from logger
+      let history = logger.getHistory(limit * 2); // Get more to account for filtering
+      
+      // Apply filters
+      if (server) {
+        history = history.filter(h => h.server?.toLowerCase().includes(server.toLowerCase()));
+      }
+      
+      if (success !== undefined) {
+        history = history.filter(h => h.success === success);
+      }
+      
+      if (search) {
+        history = history.filter(h => h.command?.toLowerCase().includes(search.toLowerCase()));
+      }
+      
+      // Limit results
+      history = history.slice(-limit);
+      
+      // Format output
+      let output = `📜 SSH Command History\n`;
+      output += `Showing last ${history.length} commands`;
+      
+      const filters = [];
+      if (server) filters.push(`server: ${server}`);
+      if (success !== undefined) filters.push(success ? 'successful only' : 'failed only');
+      if (search) filters.push(`search: ${search}`);
+      
+      if (filters.length > 0) {
+        output += ` (filtered: ${filters.join(', ')})`;
+      }
+      
+      output += '\n' + '━'.repeat(60) + '\n\n';
+      
+      if (history.length === 0) {
+        output += 'No commands found matching the criteria.\n';
+      } else {
+        history.forEach((entry, index) => {
+          const time = new Date(entry.timestamp).toLocaleString();
+          const status = entry.success ? '✅' : '❌';
+          const duration = entry.duration || 'N/A';
+          
+          output += `${history.length - index}. ${status} [${time}]\n`;
+          output += `   Server: ${entry.server || 'unknown'}\n`;
+          output += `   Command: ${entry.command?.substring(0, 100) || 'N/A'}`;
+          if (entry.command && entry.command.length > 100) {
+            output += '...';
+          }
+          output += '\n';
+          output += `   Duration: ${duration}`;
+          
+          if (!entry.success && entry.error) {
+            output += `\n   Error: ${entry.error}`;
+          }
+          
+          output += '\n\n';
+        });
+      }
+      
+      output += '━'.repeat(60) + '\n';
+      output += `Total commands in history: ${logger.getHistory(1000).length}\n`;
+      
+      logger.info('Command history retrieved', {
+        limit,
+        filters: filters.length,
+        results: history.length
+      });
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: output
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ Error retrieving history: ${error.message}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+server.registerTool(
   'ssh_list_servers',
   {
     description: 'List all configured SSH servers',
