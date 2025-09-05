@@ -8,16 +8,25 @@ A powerful Model Context Protocol (MCP) server that enables Claude Code to manag
 
 ## 🌟 Features
 
+### Core Features
 - **🔗 Multiple SSH Connections** - Manage unlimited SSH servers from a single interface
 - **🔐 Secure Authentication** - Support for both password and SSH key authentication
 - **📁 File Operations** - Upload and download files between local and remote systems
 - **⚡ Command Execution** - Run commands on remote servers with working directory support
 - **📂 Default Directories** - Set default working directories per server for convenience
 - **🎯 Easy Configuration** - Simple `.env` file setup with guided configuration tool
-- **🔧 Connection Testing** - Built-in tools to verify server connectivity
-- **🚀 Smart Deployment** - NEW! Automated file deployment with permission handling
-- **🔑 Sudo Support** - NEW! Execute commands with sudo privileges securely
-- **🏷️ Server Aliases** - NEW! Use short aliases instead of full server names
+
+### New v2.0 Features 🆕
+- **🚀 Bash CLI** - Lightning-fast pure Bash CLI for server management
+- **📊 Advanced Logging** - Comprehensive logging system with levels and history
+- **🔄 Rsync Integration** - Bidirectional file sync with rsync support
+- **💻 Persistent Sessions** - Maintain shell context across multiple commands
+- **👥 Server Groups** - Execute commands on multiple servers simultaneously
+- **🔧 SSH Tunnels** - Local/remote port forwarding and SOCKS proxy support
+- **📈 System Monitoring** - Real-time monitoring of CPU, memory, disk, and network
+- **🏷️ Server Aliases** - Use short aliases instead of full server names
+- **🚀 Smart Deployment** - Automated file deployment with permission handling
+- **🔑 Sudo Support** - Execute commands with sudo privileges securely
 
 ## 📋 Prerequisites
 
@@ -28,25 +37,39 @@ A powerful Model Context Protocol (MCP) server that enables Claude Code to manag
 
 ## 🚀 Quick Start
 
-### 1. Clone the Repository
+### Option A: Using Bash CLI (Recommended for Linux/Mac)
 
 ```bash
-git clone https://github.com/yourusername/mcp-ssh-manager.git
+# Clone and install
+git clone https://github.com/bvisible/mcp-ssh-manager.git
 cd mcp-ssh-manager
+npm install
+
+# Install the Bash CLI
+cd cli && ./install.sh
+
+# Add servers using CLI
+ssh-manager server add
+
+# Test connection
+ssh-manager server test production
+
+# Quick SSH connection
+ssh-manager ssh production
 ```
 
-### 2. Install Dependencies
+### Option B: Using Python Configuration Tool
 
 ```bash
+# Clone the repository
+git clone https://github.com/bvisible/mcp-ssh-manager.git
+cd mcp-ssh-manager
+
+# Install dependencies
 npm install
 pip install -r tools/requirements.txt
-```
 
-### 3. Configure Your Servers
-
-Run the interactive configuration tool:
-
-```bash
+# Configure servers
 python tools/server_manager.py
 ```
 
@@ -267,6 +290,74 @@ claude mcp list
 1. Verify username and password/key
 2. Check SSH key permissions: `chmod 600 ~/.ssh/your_key`
 3. Ensure user has necessary permissions on remote server
+
+## 🛠️ Available MCP Tools
+
+Once installed in Claude Code, you'll have access to these powerful tools:
+
+### Core Tools
+- `ssh_execute` - Execute commands on remote servers
+- `ssh_upload` - Upload files to remote servers
+- `ssh_download` - Download files from remote servers
+- `ssh_list_servers` - List all configured SSH servers
+
+### Advanced Tools (v2.0)
+- `ssh_sync` - Bidirectional file synchronization with rsync
+- `ssh_tail` - Real-time log monitoring with follow mode
+- `ssh_monitor` - System metrics monitoring (CPU, RAM, disk, network)
+- `ssh_history` - View command execution history
+
+### Session Management
+- `ssh_session_start` - Start persistent SSH session
+- `ssh_session_send` - Send commands to active session
+- `ssh_session_list` - List active sessions
+- `ssh_session_close` - Close specific session
+
+### Server Groups
+- `ssh_execute_group` - Execute commands on server groups
+- `ssh_group_manage` - Manage server groups (create, update, delete)
+
+### SSH Tunnels
+- `ssh_tunnel_create` - Create SSH tunnels (local, remote, SOCKS)
+- `ssh_tunnel_list` - List active tunnels with statistics
+- `ssh_tunnel_close` - Close specific or all tunnels
+
+### Deployment & Security
+- `ssh_deploy` - Smart deployment with permission handling
+- `ssh_execute_sudo` - Execute commands with sudo privileges
+- `ssh_alias` - Manage server aliases
+
+## 📚 Usage Examples
+
+### Using the Bash CLI
+
+```bash
+# Basic server management
+ssh-manager server list
+ssh-manager server add
+ssh-manager ssh prod1
+
+# File synchronization
+ssh-manager sync push prod1 ./app /var/www/
+ssh-manager sync pull prod1 /var/log/app.log ./
+
+# SSH tunnels
+ssh-manager tunnel create prod1 local 3307:localhost:3306
+ssh-manager tunnel list
+
+# Execute commands
+ssh-manager exec prod1 "docker ps"
+```
+
+### Using in Claude Code
+
+Once installed, simply ask Claude:
+- "List my SSH servers"
+- "Execute 'df -h' on production server"
+- "Upload this file to staging:/var/www/"
+- "Create an SSH tunnel to access remote MySQL"
+- "Monitor CPU usage on all servers"
+- "Start a persistent session on prod1"
 
 ## 🤝 Contributing
 
