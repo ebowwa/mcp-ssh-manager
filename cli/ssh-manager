@@ -1,0 +1,364 @@
+#!/bin/bash
+# SSH Manager CLI - Simple and powerful SSH server management
+
+set -e
+
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Source libraries
+source "$SCRIPT_DIR/lib/colors.sh"
+source "$SCRIPT_DIR/lib/config.sh"
+
+# Source command modules
+source "$SCRIPT_DIR/commands/server.sh"
+
+# Version
+VERSION="2.0.0"
+
+# Show version
+show_version() {
+    echo "SSH Manager CLI v$VERSION"
+    echo "Simple and powerful SSH server management"
+}
+
+# Show help
+show_help() {
+    cat <<EOF
+${BOLD}SSH Manager CLI${NC} - Simple and powerful SSH server management
+
+${BOLD}USAGE:${NC}
+    ssh-manager <command> [options]
+
+${BOLD}COMMANDS:${NC}
+    ${CYAN}server${NC}      Server management
+        add         Add a new server
+        list        List all servers
+        test        Test server connection
+        remove      Remove a server
+        edit        Edit server configuration
+        show        Show server details
+    
+    ${CYAN}sync${NC}        File synchronization (rsync)
+        push        Push files to server
+        pull        Pull files from server
+    
+    ${CYAN}tunnel${NC}      SSH tunnel management
+        create      Create a new tunnel
+        list        List active tunnels
+        close       Close a tunnel
+    
+    ${CYAN}monitor${NC}     System monitoring
+        cpu         Monitor CPU usage
+        memory      Monitor memory usage
+        disk        Monitor disk usage
+        network     Monitor network
+    
+    ${CYAN}session${NC}     SSH session management
+        start       Start interactive session
+        list        List active sessions
+        close       Close a session
+    
+    ${CYAN}exec${NC}        Execute commands
+        run         Run command on server
+        group       Run on server group
+    
+    ${CYAN}config${NC}      Configuration
+        edit        Edit configuration
+        show        Show configuration
+        init        Initialize configuration
+
+${BOLD}OPTIONS:${NC}
+    -h, --help      Show this help message
+    -v, --version   Show version
+    -q, --quiet     Quiet mode
+    -d, --debug     Debug mode
+
+${BOLD}EXAMPLES:${NC}
+    # Add a new server
+    ssh-manager server add
+    
+    # List all servers
+    ssh-manager server list
+    
+    # Test connection to prod1
+    ssh-manager server test prod1
+    
+    # Sync files to server
+    ssh-manager sync push prod1 ./app /var/www/app
+    
+    # Create SSH tunnel
+    ssh-manager tunnel create prod1 local 3307:localhost:3306
+    
+    # Monitor server
+    ssh-manager monitor prod1 cpu
+
+${BOLD}CONFIGURATION:${NC}
+    Config directory: ${SSH_MANAGER_HOME:-~/.ssh-manager}
+    Server config:    ${SSH_MANAGER_ENV:-.env}
+
+${BOLD}DOCUMENTATION:${NC}
+    https://github.com/bvisible/mcp-ssh-manager
+
+EOF
+}
+
+# Execute command on server
+cmd_exec() {
+    local server="$1"
+    shift
+    local command="$@"
+    
+    if [ -z "$server" ] || [ -z "$command" ]; then
+        print_error "Usage: ssh-manager exec <server> <command>"
+        return 1
+    fi
+    
+    local host=$(get_server_config "$server" "HOST")
+    local user=$(get_server_config "$server" "USER")
+    local port=$(get_server_config "$server" "PORT")
+    local keypath=$(get_server_config "$server" "KEYPATH")
+    
+    port=${port:-22}
+    
+    if [ -z "$host" ] || [ -z "$user" ]; then
+        print_error "Server '$server' not found"
+        return 1
+    fi
+    
+    local ssh_opts="-p $port"
+    if [ -n "$keypath" ]; then
+        ssh_opts="$ssh_opts -i $keypath"
+    fi
+    
+    print_info "Executing on $server: $command"
+    ssh $ssh_opts "$user@$host" "$command"
+}
+
+# Sync files using rsync
+cmd_sync() {
+    local direction="$1"
+    local server="$2"
+    local source="$3"
+    local dest="$4"
+    
+    if [ -z "$direction" ] || [ -z "$server" ] || [ -z "$source" ] || [ -z "$dest" ]; then
+        print_error "Usage: ssh-manager sync <push|pull> <server> <source> <destination>"
+        return 1
+    fi
+    
+    local host=$(get_server_config "$server" "HOST")
+    local user=$(get_server_config "$server" "USER")
+    local port=$(get_server_config "$server" "PORT")
+    local keypath=$(get_server_config "$server" "KEYPATH")
+    
+    port=${port:-22}
+    
+    if [ -z "$host" ] || [ -z "$user" ]; then
+        print_error "Server '$server' not found"
+        return 1
+    fi
+    
+    local ssh_opts="ssh -p $port"
+    if [ -n "$keypath" ]; then
+        ssh_opts="$ssh_opts -i $keypath"
+    fi
+    
+    local rsync_opts="-avz --progress"
+    
+    case "$direction" in
+        push)
+            print_info "Pushing $source to $server:$dest"
+            rsync $rsync_opts -e "$ssh_opts" "$source" "$user@$host:$dest"
+            ;;
+        pull)
+            print_info "Pulling $server:$source to $dest"
+            rsync $rsync_opts -e "$ssh_opts" "$user@$host:$source" "$dest"
+            ;;
+        *)
+            print_error "Invalid direction: $direction (use push or pull)"
+            return 1
+            ;;
+    esac
+}
+
+# Quick SSH connection
+cmd_ssh() {
+    local server="$1"
+    
+    if [ -z "$server" ]; then
+        print_error "Usage: ssh-manager ssh <server>"
+        return 1
+    fi
+    
+    local host=$(get_server_config "$server" "HOST")
+    local user=$(get_server_config "$server" "USER")
+    local port=$(get_server_config "$server" "PORT")
+    local keypath=$(get_server_config "$server" "KEYPATH")
+    
+    port=${port:-22}
+    
+    if [ -z "$host" ] || [ -z "$user" ]; then
+        print_error "Server '$server' not found"
+        return 1
+    fi
+    
+    local ssh_opts="-p $port"
+    if [ -n "$keypath" ]; then
+        ssh_opts="$ssh_opts -i $keypath"
+    fi
+    
+    print_info "Connecting to $server..."
+    ssh $ssh_opts "$user@$host"
+}
+
+# Simple tunnel creation
+cmd_tunnel() {
+    local action="$1"
+    shift
+    
+    case "$action" in
+        create)
+            local server="$1"
+            local type="$2"
+            local ports="$3"
+            
+            if [ -z "$server" ] || [ -z "$type" ] || [ -z "$ports" ]; then
+                print_error "Usage: ssh-manager tunnel create <server> <local|remote|dynamic> <ports>"
+                print_info "Examples:"
+                print_info "  Local:   ssh-manager tunnel create prod1 local 3307:localhost:3306"
+                print_info "  Remote:  ssh-manager tunnel create prod1 remote 8080:localhost:8080"
+                print_info "  Dynamic: ssh-manager tunnel create prod1 dynamic 1080"
+                return 1
+            fi
+            
+            local host=$(get_server_config "$server" "HOST")
+            local user=$(get_server_config "$server" "USER")
+            local port=$(get_server_config "$server" "PORT")
+            local keypath=$(get_server_config "$server" "KEYPATH")
+            
+            port=${port:-22}
+            
+            if [ -z "$host" ] || [ -z "$user" ]; then
+                print_error "Server '$server' not found"
+                return 1
+            fi
+            
+            local ssh_opts="-p $port -N -f"
+            if [ -n "$keypath" ]; then
+                ssh_opts="$ssh_opts -i $keypath"
+            fi
+            
+            case "$type" in
+                local)
+                    print_info "Creating local tunnel: $ports"
+                    ssh $ssh_opts -L "$ports" "$user@$host"
+                    ;;
+                remote)
+                    print_info "Creating remote tunnel: $ports"
+                    ssh $ssh_opts -R "$ports" "$user@$host"
+                    ;;
+                dynamic)
+                    print_info "Creating SOCKS proxy on port $ports"
+                    ssh $ssh_opts -D "$ports" "$user@$host"
+                    ;;
+                *)
+                    print_error "Invalid tunnel type: $type"
+                    return 1
+                    ;;
+            esac
+            
+            if [ $? -eq 0 ]; then
+                print_success "Tunnel created successfully"
+            else
+                print_error "Failed to create tunnel"
+                return 1
+            fi
+            ;;
+            
+        list)
+            print_header "Active SSH Tunnels"
+            ps aux | grep -E "ssh.*(-L|-R|-D)" | grep -v grep || print_info "No active tunnels"
+            ;;
+            
+        *)
+            print_error "Unknown tunnel command: $action"
+            echo "Available commands: create, list"
+            return 1
+            ;;
+    esac
+}
+
+# Main command handler
+main() {
+    # Check for help/version flags
+    case "$1" in
+        -h|--help|help)
+            show_help
+            exit 0
+            ;;
+        -v|--version|version)
+            show_version
+            exit 0
+            ;;
+    esac
+    
+    # Initialize configuration
+    init_config
+    
+    # Check dependencies
+    if ! check_dependencies; then
+        exit 1
+    fi
+    
+    # Get command
+    local command="$1"
+    shift || true
+    
+    # Handle commands
+    case "$command" in
+        server)
+            cmd_server "$@"
+            ;;
+        exec)
+            cmd_exec "$@"
+            ;;
+        sync)
+            cmd_sync "$@"
+            ;;
+        ssh|connect)
+            cmd_ssh "$@"
+            ;;
+        tunnel)
+            cmd_tunnel "$@"
+            ;;
+        config)
+            case "$1" in
+                edit)
+                    ${EDITOR:-nano} "$SSH_MANAGER_CONFIG"
+                    ;;
+                show)
+                    cat "$SSH_MANAGER_CONFIG"
+                    ;;
+                init)
+                    init_config
+                    ;;
+                *)
+                    print_error "Unknown config command: $1"
+                    ;;
+            esac
+            ;;
+        "")
+            show_help
+            exit 0
+            ;;
+        *)
+            print_error "Unknown command: $command"
+            echo "Run 'ssh-manager --help' for usage information"
+            exit 1
+            ;;
+    esac
+}
+
+# Run main function
+main "$@"
