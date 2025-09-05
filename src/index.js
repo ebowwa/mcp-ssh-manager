@@ -46,6 +46,17 @@ import {
   closeSession,
   SESSION_STATES
 } from './session-manager.js';
+import {
+  getGroup,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  addServersToGroup,
+  removeServersFromGroup,
+  listGroups,
+  executeOnGroup,
+  EXECUTION_STRATEGIES
+} from './server-groups.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1322,6 +1333,245 @@ function formatDuration(seconds) {
     return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
   }
 }
+
+// Server Group Management Tools
+
+server.registerTool(
+  'ssh_execute_group',
+  {
+    description: 'Execute command on a group of servers',
+    inputSchema: {
+      group: z.string().describe('Group name (e.g., "production", "staging", "all")'),
+      command: z.string().describe('Command to execute'),
+      strategy: z.enum(['parallel', 'sequential', 'rolling']).optional().describe('Execution strategy'),
+      delay: z.number().optional().describe('Delay between servers in ms (for rolling)'),
+      stopOnError: z.boolean().optional().describe('Stop execution on first error'),
+      cwd: z.string().optional().describe('Working directory')
+    }
+  },
+  async ({ group: groupName, command, strategy, delay, stopOnError, cwd }) => {
+    try {
+      // Execute command on each server in the group
+      const result = await executeOnGroup(
+        groupName,
+        async (serverName) => {
+          const ssh = await getConnection(serverName);
+          
+          // Build full command with cwd if provided
+          const servers = loadServerConfig();
+          const serverConfig = servers[serverName.toLowerCase()];
+          const workingDir = cwd || serverConfig?.default_dir;
+          const fullCommand = workingDir ? `cd ${workingDir} && ${command}` : command;
+          
+          const execResult = await ssh.execCommand(fullCommand);
+          
+          return {
+            stdout: execResult.stdout,
+            stderr: execResult.stderr,
+            code: execResult.code,
+            success: execResult.code === 0
+          };
+        },
+        { strategy, delay, stopOnError }
+      );
+      
+      // Format output
+      let output = `🚀 Group Execution: ${groupName}\n`;
+      output += `Command: ${command}\n`;
+      output += `Strategy: ${result.strategy}\n`;
+      output += '━'.repeat(60) + '\n\n';
+      
+      // Show results for each server
+      result.results.forEach(({ server, success, result: execResult, error }) => {
+        output += `📍 ${server}: ${success ? '✅ SUCCESS' : '❌ FAILED'}\n`;
+        
+        if (success && execResult) {
+          if (execResult.stdout) {
+            output += `   Output: ${execResult.stdout.substring(0, 200)}`;
+            if (execResult.stdout.length > 200) output += '...';
+            output += '\n';
+          }
+          if (execResult.stderr) {
+            output += `   Stderr: ${execResult.stderr.substring(0, 100)}\n`;
+          }
+        } else if (error) {
+          output += `   Error: ${error}\n`;
+        }
+        output += '\n';
+      });
+      
+      // Summary
+      output += '━'.repeat(60) + '\n';
+      output += `Summary: ${result.summary.successful}/${result.summary.total} successful`;
+      if (result.summary.failed > 0) {
+        output += ` (${result.summary.failed} failed)`;
+      }
+      output += '\n';
+      
+      logger.info('Group command executed', {
+        group: groupName,
+        command: command.substring(0, 50),
+        ...result.summary
+      });
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: output
+          }
+        ]
+      };
+    } catch (error) {
+      logger.error('Group execution failed', {
+        group: groupName,
+        error: error.message
+      });
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ Group execution error: ${error.message}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+server.registerTool(
+  'ssh_group_manage',
+  {
+    description: 'Manage server groups (create, update, delete, list)',
+    inputSchema: {
+      action: z.enum(['create', 'update', 'delete', 'list', 'add-servers', 'remove-servers']).describe('Action to perform'),
+      name: z.string().optional().describe('Group name'),
+      servers: z.array(z.string()).optional().describe('Server names'),
+      description: z.string().optional().describe('Group description'),
+      strategy: z.enum(['parallel', 'sequential', 'rolling']).optional().describe('Execution strategy'),
+      delay: z.number().optional().describe('Delay between servers in ms'),
+      stopOnError: z.boolean().optional().describe('Stop on error flag')
+    }
+  },
+  async ({ action, name, servers, description, strategy, delay, stopOnError }) => {
+    try {
+      let result;
+      let output = '';
+      
+      switch (action) {
+        case 'create':
+          if (!name) throw new Error('Group name required for create');
+          result = createGroup(name, servers || [], {
+            description,
+            strategy,
+            delay,
+            stopOnError
+          });
+          output = `✅ Group '${name}' created\n`;
+          output += `Servers: ${result.servers.join(', ') || 'none'}\n`;
+          output += `Strategy: ${result.strategy}\n`;
+          break;
+          
+        case 'update':
+          if (!name) throw new Error('Group name required for update');
+          result = updateGroup(name, {
+            servers,
+            description,
+            strategy,
+            delay,
+            stopOnError
+          });
+          output = `✅ Group '${name}' updated\n`;
+          output += `Servers: ${result.servers.join(', ')}\n`;
+          break;
+          
+        case 'delete':
+          if (!name) throw new Error('Group name required for delete');
+          deleteGroup(name);
+          output = `✅ Group '${name}' deleted`;
+          break;
+          
+        case 'add-servers':
+          if (!name) throw new Error('Group name required');
+          if (!servers || servers.length === 0) throw new Error('Servers required');
+          result = addServersToGroup(name, servers);
+          output = `✅ Added ${servers.length} servers to '${name}'\n`;
+          output += `Total servers: ${result.servers.length}\n`;
+          output += `Members: ${result.servers.join(', ')}`;
+          break;
+          
+        case 'remove-servers':
+          if (!name) throw new Error('Group name required');
+          if (!servers || servers.length === 0) throw new Error('Servers required');
+          result = removeServersFromGroup(name, servers);
+          output = `✅ Removed ${servers.length} servers from '${name}'\n`;
+          output += `Remaining: ${result.servers.length}\n`;
+          output += `Members: ${result.servers.join(', ') || 'none'}`;
+          break;
+          
+        case 'list':
+          const groups = listGroups();
+          output = `📋 Server Groups\n`;
+          output += '━'.repeat(60) + '\n\n';
+          
+          groups.forEach(group => {
+            output += `📁 ${group.name}`;
+            if (group.dynamic) output += ' (dynamic)';
+            output += '\n';
+            output += `   Description: ${group.description}\n`;
+            output += `   Servers: ${group.serverCount} servers\n`;
+            if (group.servers.length > 0) {
+              output += `   Members: ${group.servers.slice(0, 5).join(', ')}`;
+              if (group.servers.length > 5) output += ` ... +${group.servers.length - 5} more`;
+              output += '\n';
+            }
+            output += `   Strategy: ${group.strategy || 'parallel'}\n`;
+            if (group.delay) output += `   Delay: ${group.delay}ms\n`;
+            if (group.stopOnError) output += `   Stop on error: yes\n`;
+            output += '\n';
+          });
+          
+          output += '━'.repeat(60) + '\n';
+          output += `Total groups: ${groups.length}`;
+          break;
+          
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
+      
+      logger.info('Group management action completed', {
+        action,
+        name,
+        servers: servers?.length
+      });
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: output
+          }
+        ]
+      };
+    } catch (error) {
+      logger.error('Group management failed', {
+        action,
+        name,
+        error: error.message
+      });
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ Group management error: ${error.message}`
+          }
+        ]
+      };
+    }
+  }
+);
 
 server.registerTool(
   'ssh_list_servers',
