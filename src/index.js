@@ -496,14 +496,27 @@ server.registerTool(
       delete: z.boolean().optional().describe('Delete files in destination not in source'),
       compress: z.boolean().optional().describe('Compress during transfer'),
       verbose: z.boolean().optional().describe('Show detailed progress'),
-      checksum: z.boolean().optional().describe('Use checksum instead of timestamp for comparison')
+      checksum: z.boolean().optional().describe('Use checksum instead of timestamp for comparison'),
+      timeout: z.number().optional().describe('Timeout in milliseconds (default: 30000)')
     }
   },
-  async ({ server: serverName, source, destination, exclude = [], dryRun = false, delete: deleteFiles = false, compress = true, verbose = false, checksum = false }) => {
+  async ({ server: serverName, source, destination, exclude = [], dryRun = false, delete: deleteFiles = false, compress = true, verbose = false, checksum = false, timeout = 30000 }) => {
     try {
       const ssh = await getConnection(serverName);
       const servers = loadServerConfig();
       const serverConfig = servers[serverName.toLowerCase()];
+      
+      // Check if server has SSH key authentication
+      if (!serverConfig.keypath) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `❌ Error: ssh_sync requires SSH key authentication.\n\nThe server '${serverName}' is configured with password authentication, which is not supported by rsync in non-interactive mode.\n\nPlease use ssh_upload or ssh_download instead for this server.`
+            }
+          ]
+        };
+      }
       
       // Determine sync direction based on source/destination prefixes
       const isLocalSource = source.startsWith('local:');
@@ -543,7 +556,8 @@ server.registerTool(
       }
       
       if (verbose || logger.verbose) {
-        rsyncOptions.push('--progress', '--stats');
+        // Only add stats, not progress to avoid blocking with too much output
+        rsyncOptions.push('--stats');
       }
       
       // Add exclude patterns
@@ -551,7 +565,6 @@ server.registerTool(
         rsyncOptions.push('--exclude', pattern);
       });
       
-      let command;
       let localPath;
       let remotePath;
       
@@ -563,29 +576,24 @@ server.registerTool(
         if (!fs.existsSync(localPath)) {
           throw new Error(`Local path does not exist: ${localPath}`);
         }
-        
-        // Build rsync command for push
-        command = `rsync ${rsyncOptions.join(' ')} "${localPath}" "${serverConfig.user}@${serverConfig.host}:${remotePath}"`;
       } else {
         localPath = cleanDest;
         remotePath = cleanSource;
-        
-        // Build rsync command for pull
-        command = `rsync ${rsyncOptions.join(' ')} "${serverConfig.user}@${serverConfig.host}:${remotePath}" "${localPath}"`;
       }
       
-      // Add SSH options if using non-standard port or key
-      const sshOptions = [];
+      // Add SSH options for non-interactive mode
+      const sshOptions = [
+        '-o BatchMode=yes',           // No password prompts
+        '-o StrictHostKeyChecking=no', // No host key verification prompts
+        '-o ConnectTimeout=10'         // Connection timeout
+      ];
+      
       if (serverConfig.port && serverConfig.port !== '22') {
         sshOptions.push(`-p ${serverConfig.port}`);
       }
       if (serverConfig.keypath) {
         const keyPath = serverConfig.keypath.replace('~', process.env.HOME);
         sshOptions.push(`-i ${keyPath}`);
-      }
-      
-      if (sshOptions.length > 0) {
-        command = command.replace('rsync ', `rsync -e "ssh ${sshOptions.join(' ')}" `);
       }
       
       logger.info(`Starting rsync ${direction}`, {
@@ -598,91 +606,162 @@ server.registerTool(
       
       const startTime = Date.now();
       
-      // Execute rsync via local shell (not SSH)
-      const { exec } = await import('child_process');
-      const { promisify } = await import('util');
-      const execAsync = promisify(exec);
+      // Execute rsync via spawn for non-blocking streaming
+      const { spawn } = await import('child_process');
       
-      try {
-        const { stdout, stderr } = await execAsync(command, {
-          maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large outputs
-        });
+      return new Promise((resolve, reject) => {
+        let output = '';
+        let errorOutput = '';
+        let killed = false;
         
-        const duration = Date.now() - startTime;
+        // Build rsync arguments array directly instead of parsing command string
+        const rsyncCommand = 'rsync';
+        const rsyncArgs = [];
         
-        // Parse rsync output for statistics
-        let stats = {
-          filesTransferred: 0,
-          totalSize: 0,
-          totalTime: duration
-        };
+        // Add rsync options
+        rsyncOptions.forEach(opt => rsyncArgs.push(opt));
         
-        // Extract statistics from rsync output
-        const filesMatch = stdout.match(/Number of files transferred: (\d+)/);
-        const sizeMatch = stdout.match(/Total transferred file size: ([\d,]+) bytes/);
-        const speedMatch = stdout.match(/([\d.]+) bytes\/sec/);
+        // Add SSH command with all options
+        const sshCmd = `ssh ${sshOptions.join(' ')}`;
+        rsyncArgs.push('-e', sshCmd);
         
-        if (filesMatch) stats.filesTransferred = parseInt(filesMatch[1]);
-        if (sizeMatch) stats.totalSize = parseInt(sizeMatch[1].replace(/,/g, ''));
-        if (speedMatch) stats.speed = parseFloat(speedMatch[1]);
-        
-        logger.info(`Rsync ${direction} completed`, {
-          server: serverName,
-          direction,
-          duration: `${duration}ms`,
-          filesTransferred: stats.filesTransferred,
-          totalSize: stats.totalSize,
-          dryRun
-        });
-        
-        // Format output
-        let resultText = dryRun ? '🔍 Dry run completed\n' : '✅ Sync completed successfully\n';
-        resultText += `Direction: ${direction === 'push' ? 'Local → Remote' : 'Remote → Local'}\n`;
-        resultText += `Server: ${serverName}\n`;
-        resultText += `Source: ${direction === 'push' ? localPath : remotePath}\n`;
-        resultText += `Destination: ${direction === 'push' ? remotePath : localPath}\n`;
-        
-        if (stats.filesTransferred > 0) {
-          resultText += `Files transferred: ${stats.filesTransferred}\n`;
-          if (stats.totalSize > 0) {
-            const sizeKB = (stats.totalSize / 1024).toFixed(2);
-            resultText += `Total size: ${sizeKB} KB\n`;
-          }
-          if (stats.speed) {
-            const speedKB = (stats.speed / 1024).toFixed(2);
-            resultText += `Average speed: ${speedKB} KB/s\n`;
-          }
+        // Add source and destination
+        if (direction === 'push') {
+          rsyncArgs.push(localPath);
+          rsyncArgs.push(`${serverConfig.user}@${serverConfig.host}:${remotePath}`);
         } else {
-          resultText += 'No files needed to be transferred\n';
+          rsyncArgs.push(`${serverConfig.user}@${serverConfig.host}:${remotePath}`);
+          rsyncArgs.push(localPath);
         }
         
-        resultText += `Time: ${(duration / 1000).toFixed(2)} seconds\n`;
-        
-        if (verbose || dryRun) {
-          resultText += '\n📋 Detailed output:\n' + stdout;
-          if (stderr && stderr.trim()) {
-            resultText += '\n⚠️ Warnings:\n' + stderr;
-          }
-        }
-        
-        return {
-          content: [
-            {
-              type: 'text',
-              text: resultText
-            }
-          ]
-        };
-      } catch (execError) {
-        logger.error(`Rsync ${direction} failed`, {
-          server: serverName,
-          error: execError.message,
-          stdout: execError.stdout,
-          stderr: execError.stderr
+        const rsyncProcess = spawn(rsyncCommand, rsyncArgs, {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, SSH_ASKPASS: '/bin/false', DISPLAY: '' }
         });
         
-        throw new Error(`Rsync failed: ${execError.stderr || execError.message}`);
-      }
+        // Set timeout
+        const timer = setTimeout(() => {
+          killed = true;
+          rsyncProcess.kill('SIGTERM');
+          reject(new Error(`Rsync timeout after ${timeout}ms`));
+        }, timeout);
+        
+        // Collect output with size limit
+        rsyncProcess.stdout.on('data', (data) => {
+          const chunk = data.toString();
+          output += chunk;
+          // Limit output size to prevent memory issues
+          if (output.length > 100000) {
+            output = output.slice(-50000);
+          }
+        });
+        
+        rsyncProcess.stderr.on('data', (data) => {
+          const chunk = data.toString();
+          errorOutput += chunk;
+          if (errorOutput.length > 50000) {
+            errorOutput = errorOutput.slice(-25000);
+          }
+        });
+        
+        rsyncProcess.on('error', (err) => {
+          clearTimeout(timer);
+          reject(new Error(`Failed to start rsync: ${err.message}`));
+        });
+        
+        rsyncProcess.on('close', (code) => {
+          clearTimeout(timer);
+          
+          if (killed) {
+            return; // Already rejected due to timeout
+          }
+          
+          const duration = Date.now() - startTime;
+          
+          if (code !== 0) {
+            logger.error(`Rsync ${direction} failed`, {
+              server: serverName,
+              exitCode: code,
+              error: errorOutput,
+              duration: `${duration}ms`
+            });
+            
+            reject(new Error(`Rsync failed with exit code ${code}: ${errorOutput || 'Unknown error'}`));
+            return;
+          }
+          
+          // Parse rsync output for statistics
+          let stats = {
+            filesTransferred: 0,
+            totalSize: 0,
+            totalTime: duration
+          };
+          
+          // Extract statistics from rsync output
+          const filesMatch = output.match(/Number of files transferred: (\d+)/);
+          const sizeMatch = output.match(/Total transferred file size: ([\d,]+) bytes/);
+          const speedMatch = output.match(/([\d.]+) bytes\/sec/);
+          
+          if (filesMatch) stats.filesTransferred = parseInt(filesMatch[1]);
+          if (sizeMatch) stats.totalSize = parseInt(sizeMatch[1].replace(/,/g, ''));
+          if (speedMatch) stats.speed = parseFloat(speedMatch[1]);
+          
+          logger.info(`Rsync ${direction} completed`, {
+            server: serverName,
+            direction,
+            duration: `${duration}ms`,
+            filesTransferred: stats.filesTransferred,
+            totalSize: stats.totalSize,
+            dryRun
+          });
+          
+          // Format output
+          let resultText = dryRun ? '🔍 Dry run completed\n' : '✅ Sync completed successfully\n';
+          resultText += `Direction: ${direction === 'push' ? 'Local → Remote' : 'Remote → Local'}\n`;
+          resultText += `Server: ${serverName}\n`;
+          resultText += `Source: ${direction === 'push' ? localPath : remotePath}\n`;
+          resultText += `Destination: ${direction === 'push' ? remotePath : localPath}\n`;
+          
+          if (stats.filesTransferred > 0) {
+            resultText += `Files transferred: ${stats.filesTransferred}\n`;
+            if (stats.totalSize > 0) {
+              const sizeKB = (stats.totalSize / 1024).toFixed(2);
+              resultText += `Total size: ${sizeKB} KB\n`;
+            }
+            if (stats.speed) {
+              const speedKB = (stats.speed / 1024).toFixed(2);
+              resultText += `Average speed: ${speedKB} KB/s\n`;
+            }
+          } else {
+            resultText += 'No files needed to be transferred\n';
+          }
+          
+          resultText += `Time: ${(duration / 1000).toFixed(2)} seconds\n`;
+          
+          if (verbose && output.length < 5000) {
+            resultText += '\n📋 Sync statistics:\n';
+            // Only show relevant stats lines
+            const statsLines = output.split('\n').filter(line => 
+              line.includes('Number of') || 
+              line.includes('Total') || 
+              line.includes('sent') || 
+              line.includes('received')
+            );
+            if (statsLines.length > 0) {
+              resultText += statsLines.join('\n');
+            }
+          }
+          
+          resolve({
+            content: [
+              {
+                type: 'text',
+                text: resultText
+              }
+            ]
+          });
+        });
+      });
     } catch (error) {
       return {
         content: [
