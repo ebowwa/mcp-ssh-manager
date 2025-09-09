@@ -8,6 +8,7 @@ class SSHManager {
     this.client = new Client();
     this.connected = false;
     this.sftp = null;
+    this.cachedHomeDir = null;
   }
 
   async connect() {
@@ -194,15 +195,96 @@ class SSHManager {
     });
   }
 
+  async resolveHomePath() {
+    if (this.cachedHomeDir) {
+      return this.cachedHomeDir;
+    }
+
+    let homeDir = null;
+    
+    // Method 1: Try getent (most reliable)
+    try {
+      const result = await this.execCommand('getent passwd $USER | cut -d: -f6', { 
+        timeout: 5000, 
+        rawCommand: true 
+      });
+      homeDir = result.stdout.trim();
+      if (homeDir && homeDir.startsWith('/')) {
+        this.cachedHomeDir = homeDir;
+        return homeDir;
+      }
+    } catch (err) {
+      // getent might not be available, try next method
+    }
+
+    // Method 2: Try env -i to get clean HOME
+    try {
+      const result = await this.execCommand('env -i HOME=$HOME bash -c "echo $HOME"', {
+        timeout: 5000,
+        rawCommand: true
+      });
+      homeDir = result.stdout.trim();
+      if (homeDir && homeDir.startsWith('/')) {
+        this.cachedHomeDir = homeDir;
+        return homeDir;
+      }
+    } catch (err) {
+      // env method failed, try next
+    }
+
+    // Method 3: Parse /etc/passwd directly
+    try {
+      const result = await this.execCommand('grep "^$USER:" /etc/passwd | cut -d: -f6', {
+        timeout: 5000,
+        rawCommand: true
+      });
+      homeDir = result.stdout.trim();
+      if (homeDir && homeDir.startsWith('/')) {
+        this.cachedHomeDir = homeDir;
+        return homeDir;
+      }
+    } catch (err) {
+      // /etc/passwd parsing failed, try last resort
+    }
+
+    // Method 4: Last resort - try cd ~ && pwd
+    try {
+      const result = await this.execCommand('cd ~ && pwd', { 
+        timeout: 5000, 
+        rawCommand: true 
+      });
+      homeDir = result.stdout.trim();
+      if (homeDir && homeDir.startsWith('/')) {
+        this.cachedHomeDir = homeDir;
+        return homeDir;
+      }
+    } catch (err) {
+      // All methods failed
+    }
+
+    throw new Error('Unable to determine home directory on remote server');
+  }
+
   async putFile(localPath, remotePath) {
     // SFTP doesn't resolve ~ automatically, we need to get the real path
     let resolvedRemotePath = remotePath;
     if (remotePath.includes('~')) {
-      // Use pwd in home directory to get the real path
-      const result = await this.execCommand('cd ~ && pwd', { timeout: 5000, rawCommand: true });
-      const homeDir = result.stdout.trim();
-      // Replace ~ with the actual home directory
-      resolvedRemotePath = remotePath.replace(/^~/, homeDir);
+      try {
+        const homeDir = await this.resolveHomePath();
+        // Replace ~ with the actual home directory
+        // Handle both ~/path and ~ alone
+        if (remotePath === '~') {
+          resolvedRemotePath = homeDir;
+        } else if (remotePath.startsWith('~/')) {
+          resolvedRemotePath = homeDir + remotePath.substring(1);
+        } else {
+          // If ~ is not at the beginning, don't replace it
+          resolvedRemotePath = remotePath;
+        }
+      } catch (err) {
+        // If we can't resolve home, throw a more descriptive error
+        throw new Error(`Failed to resolve home directory for path: ${remotePath}. ${err.message}`);
+      }
     }
     
     const sftp = await this.getSFTP();
@@ -224,11 +306,22 @@ class SSHManager {
     // SFTP doesn't resolve ~ automatically, we need to get the real path
     let resolvedRemotePath = remotePath;
     if (remotePath.includes('~')) {
-      // Use pwd in home directory to get the real path
-      const result = await this.execCommand('cd ~ && pwd', { timeout: 5000, rawCommand: true });
-      const homeDir = result.stdout.trim();
-      // Replace ~ with the actual home directory
-      resolvedRemotePath = remotePath.replace(/^~/, homeDir);
+      try {
+        const homeDir = await this.resolveHomePath();
+        // Replace ~ with the actual home directory
+        // Handle both ~/path and ~ alone
+        if (remotePath === '~') {
+          resolvedRemotePath = homeDir;
+        } else if (remotePath.startsWith('~/')) {
+          resolvedRemotePath = homeDir + remotePath.substring(1);
+        } else {
+          // If ~ is not at the beginning, don't replace it
+          resolvedRemotePath = remotePath;
+        }
+      } catch (err) {
+        // If we can't resolve home, throw a more descriptive error
+        throw new Error(`Failed to resolve home directory for path: ${remotePath}. ${err.message}`);
+      }
     }
     
     const sftp = await this.getSFTP();
