@@ -135,11 +135,43 @@ function loadServerConfig() {
   return servers;
 }
 
+// Execute command with timeout
+async function execCommandWithTimeout(ssh, command, options = {}, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    
+    // Set up timeout
+    const timer = setTimeout(() => {
+      if (!completed) {
+        completed = true;
+        reject(new Error(`Command timeout after ${timeoutMs}ms: ${command.substring(0, 100)}...`));
+      }
+    }, timeoutMs);
+    
+    // Execute command
+    ssh.execCommand(command, options)
+      .then(result => {
+        if (!completed) {
+          completed = true;
+          clearTimeout(timer);
+          resolve(result);
+        }
+      })
+      .catch(error => {
+        if (!completed) {
+          completed = true;
+          clearTimeout(timer);
+          reject(error);
+        }
+      });
+  });
+}
+
 // Check if a connection is still valid
 async function isConnectionValid(ssh) {
   try {
     // Try to execute a simple command to check if connection is alive
-    const result = await ssh.execCommand('echo "ping"', { timeout: 5000 });
+    const result = await execCommandWithTimeout(ssh, 'echo "ping"', {}, 5000);
     return result.stdout.trim() === 'ping';
   } catch (error) {
     logger.debug('Connection validation failed', { error: error.message });
@@ -311,10 +343,11 @@ server.registerTool(
     inputSchema: {
       server: z.string().describe('Server name from configuration'),
       command: z.string().describe('Command to execute'),
-      cwd: z.string().optional().describe('Working directory (optional, uses default if configured)')
+      cwd: z.string().optional().describe('Working directory (optional, uses default if configured)'),
+      timeout: z.number().optional().describe('Command timeout in milliseconds (default: 30000)')
     }
   },
-  async ({ server: serverName, command, cwd }) => {
+  async ({ server: serverName, command, cwd, timeout = 30000 }) => {
     try {
       const ssh = await getConnection(serverName);
 
@@ -339,7 +372,7 @@ server.registerTool(
       // Log command execution
       const startTime = logger.logCommand(serverName, fullCommand, workingDir);
 
-      const result = await ssh.execCommand(fullCommand);
+      const result = await execCommandWithTimeout(ssh, fullCommand, {}, timeout);
       
       // Log command result
       logger.logCommandResult(serverName, fullCommand, startTime, result);
@@ -837,7 +870,7 @@ server.registerTool(
         };
       } else {
         // Non-follow mode - just get the output
-        const result = await ssh.execCommand(command);
+        const result = await execCommandWithTimeout(ssh, command, {}, 15000);
         
         if (result.code !== 0) {
           throw new Error(result.stderr || 'Failed to tail file');
@@ -947,7 +980,7 @@ server.registerTool(
       
       for (const [key, cmd] of Object.entries(commands)) {
         try {
-          const result = await ssh.execCommand(cmd);
+          const result = await execCommandWithTimeout(ssh, cmd, {}, 10000);
           if (result.code === 0) {
             output[key] = result.stdout.trim();
           } else {
@@ -1450,7 +1483,7 @@ server.registerTool(
           const workingDir = cwd || serverConfig?.default_dir;
           const fullCommand = workingDir ? `cd ${workingDir} && ${command}` : command;
           
-          const execResult = await ssh.execCommand(fullCommand);
+          const execResult = await execCommandWithTimeout(ssh, fullCommand, {}, 30000);
           
           return {
             stdout: execResult.stdout,
@@ -1744,7 +1777,7 @@ server.registerTool(
         for (const step of strategy.steps) {
           const command = step.command.replace('{{tempFile}}', tempFile);
 
-          const result = await ssh.execCommand(command);
+          const result = await execCommandWithTimeout(ssh, command, {}, 15000);
 
           if (result.code !== 0 && step.type !== 'backup') {
             throw new Error(`${step.type} failed: ${result.stderr}`);
@@ -1799,10 +1832,11 @@ server.registerTool(
       server: z.string().describe('Server name or alias'),
       command: z.string().describe('Command to execute with sudo'),
       password: z.string().optional().describe('Sudo password (will be masked in output)'),
-      cwd: z.string().optional().describe('Working directory')
+      cwd: z.string().optional().describe('Working directory'),
+      timeout: z.number().optional().describe('Command timeout in milliseconds (default: 30000)')
     }
   },
-  async ({ server, command, password, cwd }) => {
+  async ({ server, command, password, cwd, timeout = 30000 }) => {
     try {
       const ssh = await getConnection(server);
       const servers = loadServerConfig();
@@ -1832,7 +1866,7 @@ server.registerTool(
         fullCommand = `cd ${serverConfig.default_dir} && ${fullCommand}`;
       }
 
-      const result = await ssh.execCommand(fullCommand);
+      const result = await execCommandWithTimeout(ssh, fullCommand, {}, timeout);
 
       // Mask password in output for security
       const maskedCommand = fullCommand.replace(/echo "[^"]+" \| sudo -S/, 'sudo');
