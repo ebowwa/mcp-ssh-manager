@@ -2,31 +2,35 @@
 # Colors and formatting library for ssh-manager CLI
 
 # Color codes
-export RED='\033[0;31m'
-export GREEN='\033[0;32m'
-export YELLOW='\033[1;33m'
-export BLUE='\033[0;34m'
-export MAGENTA='\033[0;35m'
-export CYAN='\033[0;36m'
-export WHITE='\033[1;37m'
-export GRAY='\033[0;90m'
-export BOLD='\033[1m'
-export NC='\033[0m' # No Color
+export RED=$'\033[0;31m'
+export GREEN=$'\033[0;32m'
+export YELLOW=$'\033[1;33m'
+export BLUE=$'\033[0;34m'
+export MAGENTA=$'\033[0;35m'
+export CYAN=$'\033[0;36m'
+export WHITE=$'\033[1;37m'
+export GRAY=$'\033[0;90m'
+export BOLD=$'\033[1m'
+export NC=$'\033[0m' # No Color
 
 # Unicode symbols
 export CHECK="✅"
 export CROSS="❌"
 export WARN="⚠️"
-export INFO="ℹ️"
+export INFO="ℹ️ "
 export ARROW="➜"
 export ROCKET="🚀"
 export KEY="🔑"
-export SERVER="🖥️"
+export SERVER="🖥️ "
 export FOLDER="📁"
 export SYNC="🔄"
 export MONITOR="📊"
 export TUNNEL="🔧"
 export SESSION="💻"
+export CLIPBOARD="📋"
+export EYE="👁️"
+export GEAR="⚙️ "
+
 
 # Print functions
 print_success() {

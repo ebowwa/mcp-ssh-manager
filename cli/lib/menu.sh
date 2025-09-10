@@ -6,31 +6,31 @@ show_main_menu() {
     clear
     print_header "SSH Manager CLI v$VERSION"
     echo
-    echo "  ${CYAN}1)${NC} ${SERVER} Server Management"
+    echo -e "  ${CYAN}1)${NC} ${SERVER}Server Management"
     echo "     Add, list, test, and manage SSH servers"
     echo
-    echo "  ${CYAN}2)${NC} ${SESSION} Quick Connect"
+    echo -e "  ${CYAN}2)${NC} ${SESSION} Quick Connect"
     echo "     Connect to a server via SSH"
     echo
-    echo "  ${CYAN}3)${NC} ${SYNC} File Synchronization"
+    echo -e "  ${CYAN}3)${NC} ${SYNC} File Synchronization"
     echo "     Push/pull files with rsync"
     echo
-    echo "  ${CYAN}4)${NC} ${TUNNEL} SSH Tunnels"
+    echo -e "  ${CYAN}4)${NC} ${TUNNEL} SSH Tunnels"
     echo "     Create and manage SSH tunnels"
     echo
-    echo "  ${CYAN}5)${NC} ${MONITOR} System Monitoring"
+    echo -e "  ${CYAN}5)${NC} ${MONITOR} System Monitoring"
     echo "     Monitor server resources"
     echo
-    echo "  ${CYAN}6)${NC} ${ROCKET} Execute Commands"
+    echo -e "  ${CYAN}6)${NC} ${ROCKET} Execute Commands"
     echo "     Run commands on servers"
     echo
-    echo "  ${CYAN}7)${NC} ⚙️  Configuration"
+    echo -e "  ${CYAN}7)${NC} ${GEAR}Configuration"
     echo "     Edit settings and preferences"
     echo
-    echo "  ${CYAN}8)${NC} ${INFO} Help & Documentation"
+    echo -e "  ${CYAN}8)${NC} ${INFO}Help & Documentation"
     echo "     View help and examples"
     echo
-    echo "  ${CYAN}0)${NC} Exit"
+    echo -e "  ${CYAN}0)${NC} Exit"
     echo
     echo -e "${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -n "Choose an option [0-8]: "
@@ -41,28 +41,28 @@ show_server_menu() {
     clear
     print_header "Server Management"
     echo
-    echo "  ${CYAN}1)${NC} ${CHECK} Add New Server"
+    echo -e "  ${CYAN}1)${NC} ${CHECK} Add New Server"
     echo "     Configure a new SSH server"
     echo
-    echo "  ${CYAN}2)${NC} 📋 List All Servers"
+    echo -e "  ${CYAN}2)${NC} 📋 List All Servers"
     echo "     Show configured servers"
     echo
-    echo "  ${CYAN}3)${NC} 🔧 Test Connection"
+    echo -e "  ${CYAN}3)${NC} 🔧 Test Connection"
     echo "     Test server connectivity"
     echo
-    echo "  ${CYAN}4)${NC} ${INFO} Show Server Details"
+    echo -e "  ${CYAN}4)${NC} ${INFO}Show Server Details"
     echo "     Display server configuration"
     echo
-    echo "  ${CYAN}5)${NC} ✏️  Edit Server"
+    echo -e "  ${CYAN}5)${NC} ✏️ Edit Server"
     echo "     Modify server settings"
     echo
-    echo "  ${CYAN}6)${NC} ${CROSS} Remove Server"
+    echo -e "  ${CYAN}6)${NC} ${CROSS} Remove Server"
     echo "     Delete server configuration"
     echo
-    echo "  ${CYAN}7)${NC} 📝 Edit Config File"
+    echo -e "  ${CYAN}7)${NC} 📝 Edit Config File"
     echo "     Directly edit .env file"
     echo
-    echo "  ${CYAN}0)${NC} ← Back to Main Menu"
+    echo -e "  ${CYAN}0)${NC} ← Back to Main Menu"
     echo
     echo -e "${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -n "Choose an option [0-7]: "
@@ -125,10 +125,10 @@ wizard_add_server() {
     print_subheader "Step 3: Authentication Method"
     echo "How do you want to authenticate?"
     echo
-    echo "  ${CYAN}1)${NC} ${KEY} SSH Key (Recommended)"
+    echo -e "  ${CYAN}1)${NC} ${KEY} SSH Key (Recommended)"
     echo "     More secure, no password needed"
     echo
-    echo "  ${CYAN}2)${NC} 🔒 Password"
+    echo -e "  ${CYAN}2)${NC} 🔒 Password"
     echo "     Less secure, password required each time"
     echo
     read -p "Choose [1-2]: " auth_choice
@@ -253,7 +253,7 @@ select_server_menu() {
         local user=$(get_server_config "$server" "USER")
         local desc=$(get_server_config "$server" "DESCRIPTION")
         
-        echo "  ${CYAN}$i)${NC} ${SERVER} $server"
+        echo -e "  ${CYAN}$i)${NC} ${SERVER}$server"
         echo "     $user@$host"
         if [ -n "$desc" ]; then
             echo "     ${GRAY}$desc${NC}"
@@ -262,7 +262,7 @@ select_server_menu() {
         ((i++))
     done
     
-    echo "  ${CYAN}0)${NC} Cancel"
+    echo -e "  ${CYAN}0)${NC} Cancel"
     echo
     echo -e "${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -n "Choose server [0-${#servers[@]}]: "
@@ -289,13 +289,13 @@ show_sync_menu() {
     
     echo
     print_subheader "Sync Direction"
-    echo "  ${CYAN}1)${NC} ${ARROW} Push (Local → Remote)"
+    echo -e "  ${CYAN}1)${NC} ${ARROW} Push (Local → Remote)"
     echo "     Upload files to $server"
     echo
-    echo "  ${CYAN}2)${NC} ${ARROW} Pull (Remote → Local)"
+    echo -e "  ${CYAN}2)${NC} ${ARROW} Pull (Remote → Local)"
     echo "     Download files from $server"
     echo
-    echo "  ${CYAN}0)${NC} Cancel"
+    echo -e "  ${CYAN}0)${NC} Cancel"
     echo
     read -p "Choose direction [0-2]: " direction
     
@@ -353,19 +353,19 @@ wizard_create_tunnel() {
     
     echo
     print_subheader "Tunnel Type"
-    echo "  ${CYAN}1)${NC} Local Port Forwarding"
+    echo -e "  ${CYAN}1)${NC} Local Port Forwarding"
     echo "     Access remote service through local port"
     echo "     Example: Access remote MySQL on local port 3307"
     echo
-    echo "  ${CYAN}2)${NC} Remote Port Forwarding"
+    echo -e "  ${CYAN}2)${NC} Remote Port Forwarding"
     echo "     Expose local service to remote server"
     echo "     Example: Let remote access your local web server"
     echo
-    echo "  ${CYAN}3)${NC} Dynamic (SOCKS Proxy)"
+    echo -e "  ${CYAN}3)${NC} Dynamic (SOCKS Proxy)"
     echo "     Create SOCKS5 proxy for secure browsing"
     echo "     Example: Route browser through SSH server"
     echo
-    echo "  ${CYAN}0)${NC} Cancel"
+    echo -e "  ${CYAN}0)${NC} Cancel"
     echo
     read -p "Choose type [0-3]: " tunnel_type
     
