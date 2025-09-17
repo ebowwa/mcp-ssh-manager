@@ -27,6 +27,7 @@ A powerful Model Context Protocol (MCP) server that enables Claude Code to manag
 - **🏷️ Server Aliases** - Use short aliases instead of full server names
 - **🚀 Smart Deployment** - Automated file deployment with permission handling
 - **🔑 Sudo Support** - Execute commands with sudo privileges securely
+- **📝 OpenAI Codex Support** - Compatible with OpenAI Codex via TOML configuration
 
 ## 📋 Prerequisites
 
@@ -347,6 +348,69 @@ Once installed, simply ask Claude:
 - "Create an SSH tunnel to access remote MySQL"
 - "Monitor CPU usage on all servers"
 - "Start a persistent session on prod1"
+
+## 🤖 OpenAI Codex Integration
+
+MCP SSH Manager now supports OpenAI Codex! You can use the same SSH management capabilities with Codex's AI assistant.
+
+### Setup for Codex
+
+1. **Configure MCP SSH Manager for Codex:**
+```bash
+# Set up Codex integration
+ssh-manager codex setup
+
+# Migrate existing servers to TOML format
+ssh-manager codex migrate
+
+# Test the integration
+ssh-manager codex test
+```
+
+2. **Manual Configuration (if preferred):**
+
+Add to `~/.codex/config.toml`:
+```toml
+[mcp_servers.ssh-manager]
+command = "node"
+args = ["/path/to/mcp-ssh-manager/src/index.js"]
+env = { SSH_CONFIG_PATH = "/Users/you/.codex/ssh-config.toml" }
+startup_timeout_ms = 20000
+```
+
+3. **Server Configuration Format:**
+
+Servers are defined in `~/.codex/ssh-config.toml`:
+```toml
+[ssh_servers.production]
+host = "prod.example.com"
+user = "admin"
+password = "secure_password"  # or use key_path
+key_path = "~/.ssh/id_rsa"   # for SSH key auth
+port = 22
+default_dir = "/var/www"
+description = "Production server"
+```
+
+### Converting Between Formats
+
+```bash
+# Convert .env to TOML (for Codex)
+ssh-manager codex convert to-toml
+
+# Convert TOML back to .env (for Claude Code)
+ssh-manager codex convert to-env
+```
+
+### Using with Codex
+
+Once configured, you can use the same commands in Codex:
+- List servers: "Show my SSH servers"
+- Execute commands: "Run df -h on production"
+- Transfer files: "Upload file.txt to staging:/tmp/"
+- Monitor systems: "Check CPU usage on all servers"
+
+The integration supports both `.env` (Claude Code) and TOML (Codex) formats simultaneously, making it easy to switch between AI assistants.
 
 ## 🤝 Contributing
 

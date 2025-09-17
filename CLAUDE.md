@@ -30,17 +30,25 @@ The system consists of three main components:
 ### Setup and Installation
 ```bash
 npm install                                    # Install Node.js dependencies
-pip install -r tools/requirements.txt         # Install Python dependencies
 ./scripts/setup-hooks.sh                      # Setup pre-commit hooks for development
 ```
 
-### Server Management
+### Server Management (Bash CLI)
 ```bash
-python tools/server_manager.py                # Interactive server configuration
-python tools/server_manager.py list          # List configured servers
-python tools/server_manager.py add           # Add new server
-python tools/server_manager.py test SERVER   # Test connection to specific server
-python tools/test-connection.py SERVER       # Alternative connection test
+ssh-manager server add                        # Add a new server
+ssh-manager server list                       # List configured servers
+ssh-manager server test SERVER                # Test connection to specific server
+ssh-manager server remove SERVER              # Remove a server
+ssh-manager server show SERVER                # Show server details
+```
+
+### OpenAI Codex Integration
+```bash
+ssh-manager codex setup                       # Configure for Codex
+ssh-manager codex migrate                     # Convert servers to TOML
+ssh-manager codex test                        # Test Codex integration
+ssh-manager codex convert to-toml            # Convert .env to TOML
+ssh-manager codex convert to-env             # Convert TOML to .env
 ```
 
 ### Development and Testing
@@ -74,7 +82,21 @@ The server exposes these tools to Claude Code:
 
 ## Server Configuration
 
-Servers are configured in `.env` file with pattern:
+### Configuration Formats
+
+MCP SSH Manager supports two configuration formats:
+
+1. **Environment Variables (.env)** - Traditional format for Claude Code
+2. **TOML** - Modern format for OpenAI Codex
+
+### Configuration Loading Priority
+
+The system loads configurations in this order (highest to lowest priority):
+1. Environment variables (process.env)
+2. `.env` file in project root
+3. TOML file (specified by SSH_CONFIG_PATH or ~/.codex/ssh-config.toml)
+
+### .env Format
 ```
 SSH_SERVER_[NAME]_HOST=hostname
 SSH_SERVER_[NAME]_USER=username
@@ -83,6 +105,18 @@ SSH_SERVER_[NAME]_KEYPATH=~/.ssh/key       # For SSH key auth
 SSH_SERVER_[NAME]_PORT=22                  # Optional
 SSH_SERVER_[NAME]_DEFAULT_DIR=/path        # Optional default working directory
 SSH_SERVER_[NAME]_SUDO_PASSWORD=pass       # Optional for automated sudo
+```
+
+### TOML Format
+```toml
+[ssh_servers.name]
+host = "hostname"
+user = "username"
+password = "password"                      # For password auth
+key_path = "~/.ssh/key"                    # For SSH key auth
+port = 22                                  # Optional
+default_dir = "/path"                      # Optional default working directory
+sudo_password = "pass"                     # Optional for automated sudo
 ```
 
 ## Key Implementation Details

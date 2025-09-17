@@ -8,6 +8,7 @@ import * as dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { configLoader } from './config-loader.js';
 import {
   getTempFilename,
   buildDeploymentStrategy,
@@ -81,13 +82,30 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables
+// Load environment variables (for backward compatibility)
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 // Initialize logger
-logger.info('MCP SSH Manager starting', { 
+logger.info('MCP SSH Manager starting', {
   logLevel: process.env.SSH_LOG_LEVEL || 'INFO',
   verbose: process.env.SSH_VERBOSE === 'true'
+});
+
+// Load SSH server configuration
+let servers = {};
+configLoader.load({
+  envPath: path.join(__dirname, '..', '.env'),
+  tomlPath: process.env.SSH_CONFIG_PATH,
+  preferToml: process.env.PREFER_TOML_CONFIG === 'true'
+}).then(loadedServers => {
+  // Convert Map to object for backward compatibility
+  servers = {};
+  for (const [name, config] of loadedServers) {
+    servers[name] = config;
+  }
+  logger.info(`Loaded ${loadedServers.size} SSH server configurations from ${configLoader.configSource}`);
+}).catch(error => {
+  logger.error('Failed to load server configuration', { error: error.message });
 });
 
 // Initialize hooks system
@@ -110,40 +128,10 @@ const KEEPALIVE_INTERVAL = 5 * 60 * 1000;
 // Map to store keepalive intervals
 const keepaliveIntervals = new Map();
 
-// Load server configuration from .env
+// Load server configuration (backward compatibility wrapper)
 function loadServerConfig() {
-  const servers = {};
-
-  // Parse environment variables to extract servers
-  const knownFields = ['HOST', 'USER', 'PASSWORD', 'PORT', 'KEYPATH', 'DEFAULT_DIR', 'DESCRIPTION', 'SUDO_PASSWORD', 'ALIAS'];
-
-  for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith('SSH_SERVER_')) {
-      // Remove SSH_SERVER_ prefix
-      const remaining = key.substring(11);
-
-      // Find the last known field in the key
-      let serverName = null;
-      let field = null;
-
-      for (const knownField of knownFields) {
-        const idx = remaining.lastIndexOf('_' + knownField);
-        if (idx !== -1) {
-          serverName = remaining.substring(0, idx).toLowerCase();
-          field = knownField.toLowerCase();
-          break;
-        }
-      }
-
-      if (serverName && field) {
-        if (!servers[serverName]) {
-          servers[serverName] = {};
-        }
-        servers[serverName][field] = value;
-      }
-    }
-  }
-
+  // This function is kept for backward compatibility
+  // The actual loading is done by configLoader during initialization
   return servers;
 }
 
