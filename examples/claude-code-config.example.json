@@ -3,7 +3,34 @@
   "mcpServers": {
     "ssh-manager": {
       "command": "node",
-      "args": ["/path/to/mcp-ssh-manager/src/index.js"]
+      "args": ["/path/to/mcp-ssh-manager/src/index.js"],
+      "autoApprove": [
+        "mcp__ssh-manager__ssh_execute",
+        "mcp__ssh-manager__ssh_list_servers",
+        "mcp__ssh-manager__ssh_upload",
+        "mcp__ssh-manager__ssh_download",
+        "mcp__ssh-manager__ssh_sync",
+        "mcp__ssh-manager__ssh_alias",
+        "mcp__ssh-manager__ssh_deploy",
+        "mcp__ssh-manager__ssh_execute_sudo",
+        "mcp__ssh-manager__ssh_tunnel_create",
+        "mcp__ssh-manager__ssh_tunnel_list",
+        "mcp__ssh-manager__ssh_tunnel_close",
+        "mcp__ssh-manager__ssh_session_start",
+        "mcp__ssh-manager__ssh_session_send",
+        "mcp__ssh-manager__ssh_session_list",
+        "mcp__ssh-manager__ssh_session_close",
+        "mcp__ssh-manager__ssh_execute_group",
+        "mcp__ssh-manager__ssh_group_manage",
+        "mcp__ssh-manager__ssh_tail",
+        "mcp__ssh-manager__ssh_monitor",
+        "mcp__ssh-manager__ssh_history",
+        "mcp__ssh-manager__ssh_connection_status",
+        "mcp__ssh-manager__ssh_key_manage",
+        "mcp__ssh-manager__ssh_command_alias",
+        "mcp__ssh-manager__ssh_hooks",
+        "mcp__ssh-manager__ssh_profile"
+      ]
     },
     "example-other-server": {
       "command": "npx",

@@ -1,10 +1,36 @@
 # MCP SSH Manager 🚀
 
-A powerful Model Context Protocol (MCP) server that enables Claude Code to manage multiple SSH connections seamlessly. Control remote servers, execute commands, and transfer files directly from Claude Code.
+A powerful Model Context Protocol (MCP) server that enables **Claude Code** and **OpenAI Codex** to manage multiple SSH connections seamlessly. Control remote servers, execute commands, and transfer files directly from your AI assistant.
+
+<div align="center">
+
+[![Claude Code](https://img.shields.io/badge/Claude_Code-Compatible-5A67D8?style=for-the-badge&logo=anthropic)](https://claude.ai/code)
+[![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-Compatible-00A67E?style=for-the-badge&logo=openai)](https://openai.com/codex)
+[![MCP](https://img.shields.io/badge/MCP-Server-orange?style=for-the-badge)](https://modelcontextprotocol.io)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
 <a href="https://glama.ai/mcp/servers/@bvisible/mcp-ssh-manager">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/@bvisible/mcp-ssh-manager/badge" alt="SSH Manager MCP server" />
 </a>
+
+</div>
+
+---
+
+## 📑 Table of Contents
+
+- [Features](#-features)
+- [Quick Start - Claude Code](#-quick-start---claude-code)
+- [Quick Start - OpenAI Codex](#-quick-start---openai-codex)
+- [Prerequisites](#-prerequisites)
+- [Available MCP Tools](#-available-mcp-tools)
+- [Configuration](#-configuration)
+- [Usage Examples](#-usage-examples)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+---
 
 ## 🌟 Features
 
@@ -32,15 +58,18 @@ A powerful Model Context Protocol (MCP) server that enables Claude Code to manag
 ## 📋 Prerequisites
 
 - Node.js (v18 or higher)
-- Claude Code CLI installed
 - npm (comes with Node.js)
-- Bash 4.0+ (for CLI)
+- **For Claude Code**: Claude Code CLI installed
+- **For OpenAI Codex**: Codex CLI configured
+- Bash 4.0+ (for CLI management tools)
 - rsync (for file synchronization)
 - sshpass (optional, for rsync with password authentication)
   - macOS: `brew install hudochenkov/sshpass/sshpass`
   - Linux: `apt-get install sshpass`
 
-## 🚀 Quick Start
+## 🚀 Quick Start - Claude Code
+
+### 1. Install MCP SSH Manager
 
 ```bash
 # Clone and install
@@ -51,24 +80,9 @@ npm install
 # Install the Bash CLI
 cd cli && ./install.sh
 
-# Start interactive mode (with menu)
-ssh-manager
-
-# Or use direct commands
-ssh-manager server add        # Add a new server
-ssh-manager server list       # List all servers
-ssh-manager server test prod1 # Test connection
-ssh-manager ssh prod1         # Quick SSH connection
+# Configure your first server
+ssh-manager server add
 ```
-
-### Server Configuration
-
-The CLI provides an interactive wizard to configure servers:
-- Server name (e.g., `production`, `staging`)
-- Host/IP address
-- Username
-- Port (default: 22)
-- Authentication method (SSH key recommended)
 
 ### 2. Install to Claude Code
 
@@ -83,7 +97,36 @@ claude mcp add ssh-manager --scope project node /path/to/mcp-ssh-manager/src/ind
 claude mcp add ssh-manager --scope user node /path/to/mcp-ssh-manager/src/index.js
 ```
 
-### 3. Start Using!
+### 3. Configure Auto-Approval (Optional but Recommended)
+
+To avoid being prompted for approval on every SSH command, add auto-approve configuration:
+
+Edit `~/.config/claude-code/claude_code_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "ssh-manager": {
+      "command": "node",
+      "args": ["/path/to/mcp-ssh-manager/src/index.js"],
+      "autoApprove": [
+        "mcp__ssh-manager__ssh_execute",
+        "mcp__ssh-manager__ssh_list_servers",
+        "mcp__ssh-manager__ssh_upload",
+        "mcp__ssh-manager__ssh_download",
+        "mcp__ssh-manager__ssh_sync",
+        "mcp__ssh-manager__ssh_alias"
+      ]
+    }
+  }
+}
+```
+
+**Important**: Restart Claude Code after making this change.
+
+For full auto-approval of all SSH tools, see the complete list in [examples/claude-code-config.example.json](examples/claude-code-config.example.json).
+
+### 4. Start Using!
 
 In Claude Code, you can now:
 
@@ -99,6 +142,89 @@ In Claude Code, you can now:
 If you set `/var/www/html` as default for production, these commands are equivalent:
 - `"Run 'ls' on production"` → executes in `/var/www/html`
 - `"Run 'ls' on production in /tmp"` → executes in `/tmp` (overrides default)
+
+---
+
+## 🚀 Quick Start - OpenAI Codex
+
+### 1. Install MCP SSH Manager
+
+Same installation as Claude Code (see above), then configure for Codex:
+
+```bash
+# Set up Codex integration
+ssh-manager codex setup
+
+# Migrate existing servers to TOML format (if you have .env servers)
+ssh-manager codex migrate
+
+# Test the integration
+ssh-manager codex test
+```
+
+### 2. Manual Configuration (Optional)
+
+If you prefer manual setup, add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.ssh-manager]
+command = "node"
+args = ["/absolute/path/to/mcp-ssh-manager/src/index.js"]
+env = { SSH_CONFIG_PATH = "/Users/you/.codex/ssh-config.toml" }
+startup_timeout_ms = 20000
+```
+
+### 3. Configure Servers in TOML Format
+
+Create or edit `~/.codex/ssh-config.toml`:
+
+```toml
+[ssh_servers.production]
+host = "prod.example.com"
+user = "admin"
+password = "secure_password"  # or use key_path
+key_path = "~/.ssh/id_rsa"   # for SSH key auth (recommended)
+port = 22
+default_dir = "/var/www"
+description = "Production server"
+
+[ssh_servers.staging]
+host = "staging.example.com"
+user = "deploy"
+key_path = "~/.ssh/staging_key"
+port = 2222
+default_dir = "/home/deploy/app"
+```
+
+💡 **See [examples/codex-ssh-config.example.toml](examples/codex-ssh-config.example.toml) for more complete examples!**
+
+### 4. Start Using in Codex!
+
+In OpenAI Codex, you can now:
+
+```
+"List my SSH servers"
+"Execute 'docker ps' on production"
+"Upload file.txt to staging:/tmp/"
+"Monitor CPU usage on all servers"
+"Download production:/var/log/app.log to ./logs/"
+```
+
+### Converting Between Formats
+
+Switch easily between Claude Code (.env) and Codex (TOML):
+
+```bash
+# Convert .env to TOML (for Codex)
+ssh-manager codex convert to-toml
+
+# Convert TOML back to .env (for Claude Code)
+ssh-manager codex convert to-env
+```
+
+Both formats can coexist! The system supports both simultaneously.
+
+---
 
 ## 🛠️ Available MCP Tools
 
@@ -339,9 +465,11 @@ ssh-manager tunnel list
 ssh-manager exec prod1 "docker ps"
 ```
 
-### Using in Claude Code
+### Using in Claude Code or OpenAI Codex
 
-Once installed, simply ask Claude:
+Once installed, simply ask your AI assistant:
+
+**Claude Code examples:**
 - "List my SSH servers"
 - "Execute 'df -h' on production server"
 - "Upload this file to staging:/var/www/"
@@ -349,68 +477,15 @@ Once installed, simply ask Claude:
 - "Monitor CPU usage on all servers"
 - "Start a persistent session on prod1"
 
-## 🤖 OpenAI Codex Integration
+**OpenAI Codex examples:**
+- "Show my SSH servers"
+- "Run df -h on production"
+- "Upload file.txt to staging:/tmp/"
+- "Check CPU usage on all servers"
 
-MCP SSH Manager now supports OpenAI Codex! You can use the same SSH management capabilities with Codex's AI assistant.
+Both AI assistants support the same MCP tools! 🚀
 
-### Setup for Codex
-
-1. **Configure MCP SSH Manager for Codex:**
-```bash
-# Set up Codex integration
-ssh-manager codex setup
-
-# Migrate existing servers to TOML format
-ssh-manager codex migrate
-
-# Test the integration
-ssh-manager codex test
-```
-
-2. **Manual Configuration (if preferred):**
-
-Add to `~/.codex/config.toml`:
-```toml
-[mcp_servers.ssh-manager]
-command = "node"
-args = ["/path/to/mcp-ssh-manager/src/index.js"]
-env = { SSH_CONFIG_PATH = "/Users/you/.codex/ssh-config.toml" }
-startup_timeout_ms = 20000
-```
-
-3. **Server Configuration Format:**
-
-Servers are defined in `~/.codex/ssh-config.toml`:
-```toml
-[ssh_servers.production]
-host = "prod.example.com"
-user = "admin"
-password = "secure_password"  # or use key_path
-key_path = "~/.ssh/id_rsa"   # for SSH key auth
-port = 22
-default_dir = "/var/www"
-description = "Production server"
-```
-
-### Converting Between Formats
-
-```bash
-# Convert .env to TOML (for Codex)
-ssh-manager codex convert to-toml
-
-# Convert TOML back to .env (for Claude Code)
-ssh-manager codex convert to-env
-```
-
-### Using with Codex
-
-Once configured, you can use the same commands in Codex:
-- List servers: "Show my SSH servers"
-- Execute commands: "Run df -h on production"
-- Transfer files: "Upload file.txt to staging:/tmp/"
-- Monitor systems: "Check CPU usage on all servers"
-
-The integration supports both `.env` (Claude Code) and TOML (Codex) formats simultaneously, making it easy to switch between AI assistants.
+---
 
 ## 🤝 Contributing
 
