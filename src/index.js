@@ -3014,8 +3014,11 @@ server.registerTool(
       const backupFile = getBackupFilePath(backupId, backupDirectory);
       const metadataPath = getBackupMetadataPath(backupId, backupDirectory);
 
-      // Create backup directory if it doesn't exist
-      await ssh.execCommand(`mkdir -p "${backupDirectory}"`);
+      // Ensure backup directory exists with proper error handling
+      const mkdirResult = await ssh.execCommand(`mkdir -p "${backupDirectory}"`);
+      if (mkdirResult.code !== 0) {
+        throw new Error(`Failed to create backup directory: ${mkdirResult.stderr || mkdirResult.stdout}`);
+      }
 
       logger.info(`Creating backup: ${backupId}`, {
         server: serverName,

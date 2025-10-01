@@ -172,8 +172,8 @@ export function buildServiceStatusCommand(serviceName) {
   // Try systemd first, fallback to sysv
   return `
     if command -v systemctl >/dev/null 2>&1; then
-      systemctl is-active ${serviceName} 2>/dev/null && echo "ACTIVE" || echo "INACTIVE"
-      systemctl is-enabled ${serviceName} 2>/dev/null && echo "ENABLED" || echo "DISABLED"
+      systemctl is-active ${serviceName} 2>/dev/null >/dev/null && echo "ACTIVE" || echo "INACTIVE"
+      systemctl is-enabled ${serviceName} 2>/dev/null >/dev/null && echo "ENABLED" || echo "DISABLED"
       systemctl status ${serviceName} 2>/dev/null | grep "Main PID" | awk '{print $3}' | cut -d'(' -f1
       systemctl status ${serviceName} 2>/dev/null | grep "Active:" | sed 's/.*Active: //' | awk '{print $1,$2,$3}'
     elif command -v service >/dev/null 2>&1; then
