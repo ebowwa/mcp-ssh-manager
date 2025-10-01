@@ -70,15 +70,35 @@ python debug/test_fastmcp.py                # FastMCP integration test
 
 ## MCP Tools Available
 
-The server exposes these tools to Claude Code:
+The server exposes these tools to Claude Code and OpenAI Codex:
 
+### Core Tools
 - `ssh_list_servers`: List all configured SSH servers
 - `ssh_execute`: Execute commands on remote servers (supports default directories)
 - `ssh_upload`: Upload files to remote servers
 - `ssh_download`: Download files from remote servers
+
+### Backup & Restore (v2.1+)
+- `ssh_backup_create`: Create database or file backups (MySQL, PostgreSQL, MongoDB, Files)
+- `ssh_backup_list`: List all available backups with metadata
+- `ssh_backup_restore`: Restore from previous backups
+- `ssh_backup_schedule`: Schedule automatic backups using cron
+
+### Deployment & Management
 - `ssh_deploy`: Deploy files with automatic permission/backup handling
 - `ssh_execute_sudo`: Execute commands with sudo privileges
 - `ssh_alias`: Manage server aliases (add/remove/list)
+- `ssh_sync`: Bidirectional file synchronization with rsync
+- `ssh_monitor`: System resource monitoring
+- `ssh_tail`: Real-time log monitoring
+
+### Advanced Features
+- `ssh_session_*`: Persistent SSH sessions
+- `ssh_tunnel_*`: SSH tunnel management (local/remote/SOCKS)
+- `ssh_group_*`: Server group operations
+- `ssh_command_alias`: Command alias management
+- `ssh_hooks`: Automation hooks
+- `ssh_profile`: Profile management
 
 ## Server Configuration
 

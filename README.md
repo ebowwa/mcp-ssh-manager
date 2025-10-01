@@ -246,7 +246,31 @@ Upload files to remote servers.
 Download files from remote servers.
 - Parameters: `server`, `remote_path`, `local_path`
 
-### Advanced Tools (v1.2+)
+### Backup & Restore Tools (v2.1+) 🔄
+
+#### `ssh_backup_create`
+Create backup of database or files on remote server.
+- Types: MySQL, PostgreSQL, MongoDB, Files
+- Parameters: `server`, `type`, `name`, `database`, `paths`, `retention`
+- Automatic compression and metadata tracking
+- See [Backup Guide](docs/BACKUP_GUIDE.md) for detailed usage
+
+#### `ssh_backup_list`
+List all available backups on remote server.
+- Parameters: `server`, `type` (optional filter)
+- Returns backup details with size, date, and retention info
+
+#### `ssh_backup_restore`
+Restore from a previous backup.
+- Parameters: `server`, `backupId`, `database`, `targetPath`
+- Supports cross-database restoration
+
+#### `ssh_backup_schedule`
+Schedule automatic backups using cron.
+- Parameters: `server`, `schedule` (cron format), `type`, `name`
+- Automatic cleanup based on retention policy
+
+### Deployment Tools (v1.2+)
 
 #### `ssh_deploy` 🚀
 Deploy files with automatic permission and backup handling.
@@ -257,6 +281,8 @@ Deploy files with automatic permission and backup handling.
 Execute commands with sudo privileges.
 - Parameters: `server`, `command`, `password` (optional), `cwd` (optional)
 - Securely handles sudo password without exposing in logs
+
+### Server Management
 
 #### `ssh_alias` 🏷️
 Manage server aliases for easier access.
@@ -346,7 +372,9 @@ mcp-ssh-manager/
 │   └── requirements.txt   # Python dependencies
 ├── examples/
 │   ├── .env.example       # Example configuration
-│   └── claude-code-config.example.json
+│   ├── claude-code-config.example.json
+│   ├── backup-workflow.js # Backup and restore examples
+│   └── codex-ssh-config.example.toml
 ├── package.json           # Node.js dependencies
 ├── .env                   # Your server configurations (create from .env.example)
 └── README.md             # This file
@@ -444,6 +472,18 @@ Once installed in Claude Code, you'll have access to these powerful tools:
 - `ssh_alias` - Manage server aliases
 
 ## 📚 Usage Examples
+
+### Backup & Restore
+
+```
+"Backup production MySQL database before deployment"
+"List all backups on production server"
+"Restore backup from yesterday"
+"Schedule daily database backup at 2 AM"
+"Backup website files excluding cache and logs"
+```
+
+For detailed backup examples, see [examples/backup-workflow.js](examples/backup-workflow.js) and [docs/BACKUP_GUIDE.md](docs/BACKUP_GUIDE.md).
 
 ### Using the Bash CLI
 
