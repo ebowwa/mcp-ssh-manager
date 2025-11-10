@@ -123,6 +123,11 @@ get_server_config() {
         fi
     done < <(grep "^${key}=" "$SSH_MANAGER_ENV" 2>/dev/null)
 
+    # Return error if no value found
+    if [ -z "$value" ]; then
+        return 1
+    fi
+
     # Only remove surrounding quotes if they exist, preserve quotes within the value
     if [[ "$value" =~ ^\"(.*)\"$ ]]; then
         printf '%s' "${BASH_REMATCH[1]}"
