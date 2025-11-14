@@ -65,6 +65,19 @@ else
     fi
 fi
 
+# Test password special characters handling
+echo "📋 Testing password special character handling..."
+if [ -f "debug/test_password_special_chars.sh" ]; then
+    if bash debug/test_password_special_chars.sh > /dev/null 2>&1; then
+        echo "  ✅ Password special characters handled correctly"
+    else
+        echo "  ❌ Password special character test failed!"
+        ERRORS=$((ERRORS + 1))
+    fi
+else
+    echo "  ⚠️  Password test script not found (skipping)"
+fi
+
 echo ""
 echo "====================================="
 if [ $ERRORS -eq 0 ]; then
