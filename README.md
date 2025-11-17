@@ -610,6 +610,39 @@ claude mcp list
 
 ## 🐛 Troubleshooting
 
+### Claude Code Crashes / Interruptions
+
+**Symptoms:**
+- Claude shows "Interrupted: What should Claude do instead?"
+- MCP tools execute but Claude stops working
+- Commands succeed but Claude freezes
+
+**Solution:** v3.1.1 includes automatic fixes:
+- ✅ Output auto-truncated to prevent context overflow
+- ✅ Timeout increased to 2 minutes (default), max 5 minutes
+- ✅ Standardized error responses
+
+**Performance Tuning** (add to `.env`):
+```bash
+# Reduce output size (default: 10000 characters)
+MCP_SSH_MAX_OUTPUT_LENGTH=5000
+
+# Increase timeout for slow commands (default: 120000ms)
+MCP_SSH_DEFAULT_TIMEOUT=180000
+
+# Use compact JSON to save tokens (default: false)
+MCP_SSH_COMPACT_JSON=true
+```
+
+**For large outputs:**
+```bash
+# Instead of: cat huge-log.txt
+# Use: tail -n 100 huge-log.txt
+# Or: grep ERROR huge-log.txt | tail -n 50
+```
+
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for complete guide.
+
 ### MCP Tools Not Available
 
 1. Ensure MCP is installed: `claude mcp list`
@@ -618,7 +651,7 @@ claude mcp list
 
 ### Connection Failed
 
-1. Test connection: `python tools/test-connection.py [server_name]`
+1. Test connection: `ssh-manager server test [server_name]`
 2. Verify network connectivity
 3. Check firewall rules
 4. Ensure SSH service is running on remote server
