@@ -15,11 +15,11 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
-    "ssh2": "^1.15.0"
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
-    "@types/node": "^20.19.25",
-    "@types/ssh2": "^1.15.0",
+    "@types/node": "^25.0.10",
+    "@types/ssh2": "^1.15.5",
     "typescript": "^5.9.3"
   },
   "engines": {
